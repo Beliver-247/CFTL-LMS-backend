@@ -10,6 +10,9 @@ jobs:
     name: Deploy to Firebase Functions
     runs-on: ubuntu-latest
 
+    env:
+      FUNCTIONS_EMULATOR: false  # Set to true if you want to test locally before deploying
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
