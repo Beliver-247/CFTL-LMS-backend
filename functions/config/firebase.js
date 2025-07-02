@@ -1,15 +1,21 @@
 const admin = require("firebase-admin");
+const fs = require("fs");
+const path = require("path");
 
 if (!admin.apps.length) {
-  // Use local service account only if running locally
-  if (process.env.FUNCTIONS_EMULATOR === "true" || process.env.NODE_ENV === "development") {
-    const serviceAccount = require("../serviceAccountKey.json");
+  // Check if serviceAccountKey.json exists (for local dev)
+  const serviceAccountPath = path.join(__dirname, "../serviceAccountKey.json");
+  const useServiceAccount =
+    process.env.FUNCTIONS_EMULATOR === "true" && fs.existsSync(serviceAccountPath);
+
+  if (useServiceAccount) {
+    const serviceAccount = require(serviceAccountPath);
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
   } else {
-    // Automatically use Firebase credentials when deployed
+    // Use default credentials in Firebase deploy or GitHub Actions
     admin.initializeApp();
   }
 }
