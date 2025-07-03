@@ -11,10 +11,13 @@ const parentRoutes = require("./routes/parentRoutes");
 const authRoutes = require("./routes/authRoutes");
 const studentRoutes = require("./routes/studentRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const imageUploadRoutes = require('./routes/imageUploadRoutes');
 
 const app = express();
 
 app.use(cors());
+
+app.use('/api/upload', imageUploadRoutes);
 
 // Routes expecting JSON only
 app.use('/api/syllabus', express.json(), syllabusRoutes);
@@ -25,6 +28,7 @@ app.use('/api/admins', express.json(), adminRoutes);
 
 // Routes expecting multipart/form-data (do NOT use express.json())
 app.use('/api/students', studentRoutes);
+
 
 
 exports.api = onRequest(
