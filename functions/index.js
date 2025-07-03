@@ -24,4 +24,9 @@ app.use("/api/auth", authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/admins', adminRoutes);
 
-exports.api = functions.https.onRequest(app);
+exports.api = functions
+  .runWith({
+    timeoutSeconds: 300,
+    memory: '1GB',
+  })
+  .https.onRequest(app);
