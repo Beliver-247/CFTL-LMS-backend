@@ -1,4 +1,5 @@
 const { db } = require('../config/firebase');
+const Busboy = require('busboy');
 const { uploadCompressedImage } = require('../utils/uploadToGCS');
 const collection = db.collection('students');
 const admin = require('firebase-admin');
@@ -28,88 +29,102 @@ const tryCreateParent = async (nic, email, name) => {
 
 exports.createStudent = async (req, res) => {
   try {
-    // Log request details
-    console.log("Request headers:", req.headers);
-    console.log("Request body:", req.body);
-    console.log("Request file:", req.file ? req.file.originalname : "No file");
+    const busboy = Busboy({ headers: req.headers });
 
-    // Check for file size issues
-    if (req.file && req.file.truncated) {
-      return res.status(400).send({ error: 'File too large. Maximum size is 5MB.' });
-    }
+    let fileBuffer = null;
+    let fileName = '';
+    let formData = {};
 
-    // Validate data field
-    if (!req.body.data) {
-      return res.status(400).send({ error: 'Missing data field in request body' });
-    }
+    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+      fileName = filename;
+      const chunks = [];
 
-    let body;
-    try {
-      body = JSON.parse(req.body.data);
-    } catch (err) {
-      return res.status(400).send({ error: 'Invalid JSON format in data field' });
-    }
+      file.on('data', (data) => {
+        chunks.push(data);
+      });
 
-    const { nic, dob, mother, father, nominee } = body;
-
-    // Validate NIC formats
-    if (nic && !isValidNIC(nic)) return res.status(400).send({ error: 'Invalid student NIC format' });
-    if (mother?.nic && !isValidNIC(mother.nic)) return res.status(400).send({ error: 'Invalid mother NIC format' });
-    if (father?.nic && !isValidNIC(father.nic)) return res.status(400).send({ error: 'Invalid father NIC format' });
-    if (nominee?.nic && !isValidNIC(nominee.nic)) return res.status(400).send({ error: 'Invalid nominee NIC format' });
-
-    // Upload profile picture
-    const profilePictureUrl = req.file
-      ? await uploadCompressedImage(req.file.buffer, req.file.originalname)
-      : null;
-
-    // Auto-create parent accounts
-    await tryCreateParent(mother?.nic, mother?.email, mother?.name);
-    await tryCreateParent(father?.nic, father?.email, father?.name);
-    await tryCreateParent(nominee?.nic, null, nominee?.name);
-
-    // Use transaction for registrationNo
-    const result = await db.runTransaction(async (transaction) => {
-      const counterRef = db.collection('counters').doc('student');
-      const counterDoc = await transaction.get(counterRef);
-
-      if (!counterDoc.exists) {
-        throw new Error('Student counter not initialized.');
-      }
-
-      const lastReg = counterDoc.data().lastRegNumber || 0;
-      const nextReg = lastReg + 1;
-      const registrationNo = `STD${String(nextReg).padStart(4, '0')}`;
-
-      transaction.update(counterRef, { lastRegNumber: nextReg });
-
-      const studentData = {
-        ...body,
-        registrationNo,
-        registrationDate: admin.firestore.Timestamp.now(),
-        registrationFee: Number(body.registrationFee),
-        monthlyFee: Number(body.monthlyFee),
-        preBudget: Number(body.preBudget),
-        totalAmount: Number(body.totalAmount),
-        dob: new Date(dob),
-        profilePictureUrl,
-        parents: { mother, father },
-        subjects: body.subjects,
-        nominee,
-      };
-
-      const newDocRef = db.collection('students').doc();
-      transaction.set(newDocRef, studentData);
-
-      return { id: newDocRef.id, registrationNo, registrationDate: new Date() };
+      file.on('end', () => {
+        fileBuffer = Buffer.concat(chunks);
+      });
     });
 
-    res.status(201).send(result);
+    busboy.on('field', (fieldname, val) => {
+      formData[fieldname] = val;
+    });
+
+    busboy.on('finish', async () => {
+      let body;
+      try {
+        body = JSON.parse(formData.data);
+      } catch (err) {
+        return res.status(400).send({ error: 'Invalid JSON in `data` field' });
+      }
+
+      const { nic, dob, mother, father, nominee } = body;
+
+      // Validate NICs
+      const allNICs = [
+        { type: 'student', nic },
+        { type: 'mother', nic: mother?.nic },
+        { type: 'father', nic: father?.nic },
+        { type: 'nominee', nic: nominee?.nic },
+      ];
+      for (const { type, nic } of allNICs) {
+        if (nic && !isValidNIC(nic)) {
+          return res.status(400).send({ error: `Invalid ${type} NIC format` });
+        }
+      }
+
+      const profilePictureUrl = fileBuffer
+        ? await uploadCompressedImage(fileBuffer, fileName)
+        : null;
+
+      // Auto-create parent accounts
+      await tryCreateParent(mother?.nic, mother?.email, mother?.name);
+      await tryCreateParent(father?.nic, father?.email, father?.name);
+      await tryCreateParent(nominee?.nic, null, nominee?.name);
+
+      const result = await db.runTransaction(async (transaction) => {
+        const counterRef = db.collection('counters').doc('student');
+        const counterDoc = await transaction.get(counterRef);
+
+        if (!counterDoc.exists) {
+          throw new Error('Student counter not initialized.');
+        }
+
+        const lastReg = counterDoc.data().lastRegNumber || 0;
+        const nextReg = lastReg + 1;
+        const registrationNo = `STD${String(nextReg).padStart(4, '0')}`;
+
+        transaction.update(counterRef, { lastRegNumber: nextReg });
+
+        const studentData = {
+          ...body,
+          registrationNo,
+          registrationDate: admin.firestore.Timestamp.now(),
+          registrationFee: Number(body.registrationFee),
+          monthlyFee: Number(body.monthlyFee),
+          preBudget: Number(body.preBudget),
+          totalAmount: Number(body.totalAmount),
+          dob: new Date(dob),
+          profilePictureUrl,
+          parents: { mother, father },
+          subjects: body.subjects,
+          nominee,
+        };
+
+        const newDocRef = db.collection('students').doc();
+        transaction.set(newDocRef, studentData);
+
+        return { id: newDocRef.id, registrationNo };
+      });
+
+      res.status(201).send(result);
+    });
+
+    req.pipe(busboy);
   } catch (err) {
     console.error("CreateStudent error:", err);
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).send({ error: 'File too large. Maximum size is 5MB.' });
-    }
     res.status(500).send({ error: err.message });
   }
 };
@@ -142,27 +157,65 @@ exports.getStudentById = async (req, res) => {
 exports.updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const body = req.body.data ? JSON.parse(req.body.data) : req.body;
 
-    // Optional: validate NIC fields if being updated
-    for (const field of ['nic', 'mother?.nic', 'father?.nic', 'nominee?.nic']) {
-      const val = eval(`body.${field}`);
-      if (val && !isValidNIC(val)) {
-        return res.status(400).send({ error: `Invalid NIC format in ${field}` });
+    const busboy = Busboy({ headers: req.headers });
+
+    let fileBuffer = null;
+    let fileName = '';
+    let formData = {};
+
+    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+      fileName = filename;
+      const chunks = [];
+
+      file.on('data', (data) => {
+        chunks.push(data);
+      });
+
+      file.on('end', () => {
+        fileBuffer = Buffer.concat(chunks);
+      });
+    });
+
+    busboy.on('field', (fieldname, val) => {
+      formData[fieldname] = val;
+    });
+
+    busboy.on('finish', async () => {
+      let body;
+      try {
+        body = formData.data ? JSON.parse(formData.data) : formData;
+      } catch (err) {
+        return res.status(400).send({ error: 'Invalid JSON in `data` field' });
       }
-    }
 
-    // Optional: handle profile picture update
-    let profilePictureUrl = null;
-    if (req.file) {
-      profilePictureUrl = await uploadCompressedImage(req.file.buffer, req.file.originalname);
-      body.profilePictureUrl = profilePictureUrl;
-    }
+      // Validate NICs (if present)
+      const nicChecks = [
+        { field: 'nic', value: body.nic },
+        { field: 'mother.nic', value: body?.mother?.nic },
+        { field: 'father.nic', value: body?.father?.nic },
+        { field: 'nominee.nic', value: body?.nominee?.nic },
+      ];
 
-    await collection.doc(id).update(body);
-    res.status(200).send({ id, ...body });
+      for (const { field, value } of nicChecks) {
+        if (value && !isValidNIC(value)) {
+          return res.status(400).send({ error: `Invalid NIC format in ${field}` });
+        }
+      }
+
+      // Upload new profile picture if provided
+      if (fileBuffer) {
+        const profilePictureUrl = await uploadCompressedImage(fileBuffer, fileName);
+        body.profilePictureUrl = profilePictureUrl;
+      }
+
+      await collection.doc(id).update(body);
+      res.status(200).send({ id, ...body });
+    });
+
+    req.pipe(busboy);
   } catch (err) {
-    console.error(err);
+    console.error("UpdateStudent error:", err);
     res.status(500).send({ error: err.message });
   }
 };
