@@ -1,5 +1,5 @@
 const { onRequest } = require("firebase-functions/v2/https");
-const express = require("express");
+//const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 
@@ -17,12 +17,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use("/api/syllabus", syllabusRoutes);
-app.use("/api/teachers", teacherRoutes);
-app.use("/api/parents", parentRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/students", studentRoutes);
-app.use("/api/admins", adminRoutes);
+// Routes expecting JSON only
+app.use('/api/syllabus', express.json(), syllabusRoutes);
+app.use('/api/teachers', express.json(), teacherRoutes);
+app.use('/api/parents', express.json(), parentRoutes);
+app.use('/api/auth', express.json(), authRoutes);
+app.use('/api/admins', express.json(), adminRoutes);
+
+// Routes expecting multipart/form-data (do NOT use express.json())
+app.use('/api/students', studentRoutes);
+
 
 exports.api = onRequest(
   {
