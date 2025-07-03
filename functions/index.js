@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+const { onRequest } = require("firebase-functions/v2/https");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -9,8 +9,8 @@ const syllabusRoutes = require("./routes/syllabusRoutes");
 const teacherRoutes = require("./routes/teacherRoutes");
 const parentRoutes = require("./routes/parentRoutes");
 const authRoutes = require("./routes/authRoutes");
-const studentRoutes = require('./routes/studentRoutes');
-const adminRoutes = require('./routes/adminRoutes');
+const studentRoutes = require("./routes/studentRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
@@ -21,12 +21,13 @@ app.use("/api/syllabus", syllabusRoutes);
 app.use("/api/teachers", teacherRoutes);
 app.use("/api/parents", parentRoutes);
 app.use("/api/auth", authRoutes);
-app.use('/api/students', studentRoutes);
-app.use('/api/admins', adminRoutes);
+app.use("/api/students", studentRoutes);
+app.use("/api/admins", adminRoutes);
 
-exports.api = functions
-  .runWith({
+exports.api = onRequest(
+  {
     timeoutSeconds: 300,
-    memory: '1GB',
-  })
-  .https.onRequest(app);
+    memory: "1GB",
+  },
+  app
+);
