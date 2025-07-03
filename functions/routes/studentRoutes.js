@@ -1,5 +1,5 @@
 const express = require('express');
-const multer = require('multer');
+
 const { 
   createStudent, 
   getAllStudents, 
@@ -7,23 +7,15 @@ const {
   updateStudent, 
   deleteStudent,
   getLatestRegistrationNo 
-} = require('../controllers/studentController'); // Import all required functions
+} = require('../controllers/studentController'); 
 
 const router = express.Router();
-
-// Use memory storage for in-memory buffer access (for sharp compression)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
-  },
-});
 
 router.get('/', getAllStudents);
 router.get('/latest-regno', getLatestRegistrationNo);
 router.get('/:id', getStudentById);
-router.post('/', upload.single('profilePicture'), createStudent);
-router.put('/:id', upload.single('profilePicture'), updateStudent); // Add route for update
+router.post('/', createStudent);
+router.put('/:id', updateStudent);
 router.delete('/:id', deleteStudent);
 
 
