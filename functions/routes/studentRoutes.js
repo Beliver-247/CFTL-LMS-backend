@@ -12,7 +12,12 @@ const {
 const router = express.Router();
 
 // Use memory storage for in-memory buffer access (for sharp compression)
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+});
 
 router.get('/', getAllStudents);
 router.get('/latest-regno', getLatestRegistrationNo);

@@ -28,33 +28,47 @@ const tryCreateParent = async (nic, email, name) => {
 
 exports.createStudent = async (req, res) => {
   try {
-    const body = req.body.data ? JSON.parse(req.body.data) : req.body;
+    // Log request details
+    console.log("Request headers:", req.headers);
+    console.log("Request body:", req.body);
+    console.log("Request file:", req.file ? req.file.originalname : "No file");
 
-    const {
-      nic,
-      dob,
-      mother,
-      father,
-      nominee,
-    } = body;
+    // Check for file size issues
+    if (req.file && req.file.truncated) {
+      return res.status(400).send({ error: 'File too large. Maximum size is 5MB.' });
+    }
 
-    // ✅ Validate NIC formats
+    // Validate data field
+    if (!req.body.data) {
+      return res.status(400).send({ error: 'Missing data field in request body' });
+    }
+
+    let body;
+    try {
+      body = JSON.parse(req.body.data);
+    } catch (err) {
+      return res.status(400).send({ error: 'Invalid JSON format in data field' });
+    }
+
+    const { nic, dob, mother, father, nominee } = body;
+
+    // Validate NIC formats
     if (nic && !isValidNIC(nic)) return res.status(400).send({ error: 'Invalid student NIC format' });
     if (mother?.nic && !isValidNIC(mother.nic)) return res.status(400).send({ error: 'Invalid mother NIC format' });
     if (father?.nic && !isValidNIC(father.nic)) return res.status(400).send({ error: 'Invalid father NIC format' });
     if (nominee?.nic && !isValidNIC(nominee.nic)) return res.status(400).send({ error: 'Invalid nominee NIC format' });
 
-    // ✅ Upload profile picture if present
+    // Upload profile picture
     const profilePictureUrl = req.file
       ? await uploadCompressedImage(req.file.buffer, req.file.originalname)
       : null;
 
-    // ✅ Auto-create parent accounts
+    // Auto-create parent accounts
     await tryCreateParent(mother?.nic, mother?.email, mother?.name);
     await tryCreateParent(father?.nic, father?.email, father?.name);
     await tryCreateParent(nominee?.nic, null, nominee?.name);
 
-    // ✅ Use a Firestore transaction to generate unique registrationNo
+    // Use transaction for registrationNo
     const result = await db.runTransaction(async (transaction) => {
       const counterRef = db.collection('counters').doc('student');
       const counterDoc = await transaction.get(counterRef);
@@ -67,10 +81,8 @@ exports.createStudent = async (req, res) => {
       const nextReg = lastReg + 1;
       const registrationNo = `STD${String(nextReg).padStart(4, '0')}`;
 
-      // ✅ Update counter
       transaction.update(counterRef, { lastRegNumber: nextReg });
 
-      // ✅ Prepare student data
       const studentData = {
         ...body,
         registrationNo,
@@ -94,7 +106,10 @@ exports.createStudent = async (req, res) => {
 
     res.status(201).send(result);
   } catch (err) {
-    console.error(err);
+    console.error("CreateStudent error:", err);
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).send({ error: 'File too large. Maximum size is 5MB.' });
+    }
     res.status(500).send({ error: err.message });
   }
 };
