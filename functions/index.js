@@ -1,5 +1,5 @@
 const { onRequest } = require("firebase-functions/v2/https");
-//const express = require("express");
+const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 
@@ -15,7 +15,6 @@ const adminRoutes = require("./routes/adminRoutes");
 const app = express();
 
 app.use(cors());
-app.use(express.json());
 
 // Routes expecting JSON only
 app.use('/api/syllabus', express.json(), syllabusRoutes);
