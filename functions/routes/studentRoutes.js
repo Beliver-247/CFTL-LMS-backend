@@ -1,11 +1,11 @@
 const express = require('express');
-const { 
-  createStudent, 
-  getAllStudents, 
-  getStudentById, 
-  updateStudent, 
+const {
+  createStudent,
+  getAllStudents,
+  getStudentById,
+  updateStudent,
   deleteStudent,
-  getLatestRegistrationNo 
+  getLatestRegistrationNo
 } = require('../controllers/studentController');
 
 const router = express.Router();

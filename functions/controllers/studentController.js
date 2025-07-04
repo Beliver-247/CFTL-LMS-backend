@@ -42,7 +42,7 @@ exports.createStudent = async (req, res) => {
     await tryCreateParent(father?.nic, father?.email, father?.name);
     await tryCreateParent(nominee?.nic, null, nominee?.name);
 
-    // Use transaction for registrationNo
+    // Transaction to generate registration number and add student
     const result = await db.runTransaction(async (transaction) => {
       const counterRef = db.collection('counters').doc('student');
       const counterDoc = await transaction.get(counterRef);
@@ -60,7 +60,7 @@ exports.createStudent = async (req, res) => {
       const studentData = {
         ...body,
         registrationNo,
-        registrationDate:Timestamp.now(),
+        registrationDate: Timestamp.now(),
         registrationFee: Number(body.registrationFee),
         monthlyFee: Number(body.monthlyFee),
         preBudget: Number(body.preBudget),
@@ -83,6 +83,7 @@ exports.createStudent = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
+
 
 // ✅ GET all students
 exports.getAllStudents = async (req, res) => {
@@ -107,33 +108,32 @@ exports.getStudentById = async (req, res) => {
   }
 };
 
-// ✅ UPDATE student by ID
 exports.updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
     const body = req.body;
 
-    // Validate NIC fields if they exist
-    const fieldsToValidate = [
-      { path: 'nic', value: body.nic },
-      { path: 'mother.nic', value: body?.mother?.nic },
-      { path: 'father.nic', value: body?.father?.nic },
-      { path: 'nominee.nic', value: body?.nominee?.nic },
+    const nicChecks = [
+      { field: 'nic', value: body.nic },
+      { field: 'mother.nic', value: body?.mother?.nic },
+      { field: 'father.nic', value: body?.father?.nic },
+      { field: 'nominee.nic', value: body?.nominee?.nic },
     ];
 
-    for (const { path, value } of fieldsToValidate) {
+    for (const { field, value } of nicChecks) {
       if (value && !isValidNIC(value)) {
-        return res.status(400).send({ error: `Invalid NIC format in ${path}` });
+        return res.status(400).send({ error: `Invalid NIC format in ${field}` });
       }
     }
 
     await collection.doc(id).update(body);
     res.status(200).send({ id, ...body });
   } catch (err) {
-    console.error(err);
+    console.error("UpdateStudent error:", err);
     res.status(500).send({ error: err.message });
   }
 };
+
 
 // ✅ DELETE student by ID
 exports.deleteStudent = async (req, res) => {
