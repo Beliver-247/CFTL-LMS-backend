@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
-const { uploadCompressedImage } = require('../utils/uploadToGCS');
 const collection = db.collection('students');
+const {Timestamp} = require('firebase-admin/firestore');
 const admin = require('firebase-admin');
 
 const isValidNIC = (nic) => {
@@ -28,28 +28,7 @@ const tryCreateParent = async (nic, email, name) => {
 
 exports.createStudent = async (req, res) => {
   try {
-    // Log request details
-    console.log("Request headers:", req.headers);
-    console.log("Request body:", req.body);
-    console.log("Request file:", req.file ? req.file.originalname : "No file");
-
-    // Check for file size issues
-    if (req.file && req.file.truncated) {
-      return res.status(400).send({ error: 'File too large. Maximum size is 5MB.' });
-    }
-
-    // Validate data field
-    if (!req.body.data) {
-      return res.status(400).send({ error: 'Missing data field in request body' });
-    }
-
-    let body;
-    try {
-      body = JSON.parse(req.body.data);
-    } catch (err) {
-      return res.status(400).send({ error: 'Invalid JSON format in data field' });
-    }
-
+    const body = req.body;
     const { nic, dob, mother, father, nominee } = body;
 
     // Validate NIC formats
@@ -57,11 +36,6 @@ exports.createStudent = async (req, res) => {
     if (mother?.nic && !isValidNIC(mother.nic)) return res.status(400).send({ error: 'Invalid mother NIC format' });
     if (father?.nic && !isValidNIC(father.nic)) return res.status(400).send({ error: 'Invalid father NIC format' });
     if (nominee?.nic && !isValidNIC(nominee.nic)) return res.status(400).send({ error: 'Invalid nominee NIC format' });
-
-    // Upload profile picture
-    const profilePictureUrl = req.file
-      ? await uploadCompressedImage(req.file.buffer, req.file.originalname)
-      : null;
 
     // Auto-create parent accounts
     await tryCreateParent(mother?.nic, mother?.email, mother?.name);
@@ -86,13 +60,12 @@ exports.createStudent = async (req, res) => {
       const studentData = {
         ...body,
         registrationNo,
-        registrationDate: admin.firestore.Timestamp.now(),
+        registrationDate:Timestamp.now(),
         registrationFee: Number(body.registrationFee),
         monthlyFee: Number(body.monthlyFee),
         preBudget: Number(body.preBudget),
         totalAmount: Number(body.totalAmount),
         dob: new Date(dob),
-        profilePictureUrl,
         parents: { mother, father },
         subjects: body.subjects,
         nominee,
@@ -107,13 +80,9 @@ exports.createStudent = async (req, res) => {
     res.status(201).send(result);
   } catch (err) {
     console.error("CreateStudent error:", err);
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).send({ error: 'File too large. Maximum size is 5MB.' });
-    }
     res.status(500).send({ error: err.message });
   }
 };
-
 
 // ✅ GET all students
 exports.getAllStudents = async (req, res) => {
@@ -142,21 +111,20 @@ exports.getStudentById = async (req, res) => {
 exports.updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const body = req.body.data ? JSON.parse(req.body.data) : req.body;
+    const body = req.body;
 
-    // Optional: validate NIC fields if being updated
-    for (const field of ['nic', 'mother?.nic', 'father?.nic', 'nominee?.nic']) {
-      const val = eval(`body.${field}`);
-      if (val && !isValidNIC(val)) {
-        return res.status(400).send({ error: `Invalid NIC format in ${field}` });
+    // Validate NIC fields if they exist
+    const fieldsToValidate = [
+      { path: 'nic', value: body.nic },
+      { path: 'mother.nic', value: body?.mother?.nic },
+      { path: 'father.nic', value: body?.father?.nic },
+      { path: 'nominee.nic', value: body?.nominee?.nic },
+    ];
+
+    for (const { path, value } of fieldsToValidate) {
+      if (value && !isValidNIC(value)) {
+        return res.status(400).send({ error: `Invalid NIC format in ${path}` });
       }
-    }
-
-    // Optional: handle profile picture update
-    let profilePictureUrl = null;
-    if (req.file) {
-      profilePictureUrl = await uploadCompressedImage(req.file.buffer, req.file.originalname);
-      body.profilePictureUrl = profilePictureUrl;
     }
 
     await collection.doc(id).update(body);
@@ -177,6 +145,7 @@ exports.deleteStudent = async (req, res) => {
   }
 };
 
+// ✅ GET latest registration number
 exports.getLatestRegistrationNo = async (req, res) => {
   try {
     const counterDoc = await db.collection('counters').doc('student').get();
@@ -196,6 +165,3 @@ exports.getLatestRegistrationNo = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
-
-
-

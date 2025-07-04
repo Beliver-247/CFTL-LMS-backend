@@ -1,5 +1,6 @@
 const express = require('express');
-const multer = require('multer');
+// const multer = require('multer');
+const { checkInvite } = require('../controllers/adminController');
 const {
   createAdmin,
   getLoggedInAdmin,
@@ -10,19 +11,18 @@ const {
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+// const upload = multer({ storage: multer.memoryStorage() });
 
 // ✅ Public route to create admin
-router.post('/', verifyFirebaseToken, upload.single('profilePicture'), createAdmin); // ✅ CORRECT
+router.post('/', verifyFirebaseToken, createAdmin);
 
-
-// ✅ Secure routes (require valid Firebase token)
+router.get('/check-invite', checkInvite);
 
 // Get logged-in admin profile
 router.get('/me', verifyFirebaseToken, getLoggedInAdmin);
 
 // Update own profile (optional)
-router.put('/me', verifyFirebaseToken, upload.single('profilePicture'), updateAdmin);
+router.put('/me', verifyFirebaseToken, updateAdmin);
 
 // Delete own profile (optional)
 router.delete('/me', verifyFirebaseToken, deleteAdmin);

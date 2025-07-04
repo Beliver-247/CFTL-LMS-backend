@@ -1,7 +1,8 @@
 const { db } = require('../config/firebase');
 const bcrypt = require('bcryptjs');
-const { uploadCompressedImage } = require('../utils/uploadToGCS'); // include this if you're uploading images
+// const { uploadCompressedImage } = require('../utils/uploadToGCS'); // include this if you're uploading images
 const collection = db.collection('admins');
+const inviteCollection = db.collection('admin_invites');
 
 // ✅ Create new admin
 exports.createAdmin = async (req, res) => {
@@ -10,27 +11,29 @@ exports.createAdmin = async (req, res) => {
       fullName,
       nameInitials,
       telephone,
-      altTelephone
+      altTelephone,
     } = req.body;
 
     const email = req.user.email;
 
+    // ✅ REQUIRED FIELD CHECK - ADD THIS HERE
+    if (!fullName || !nameInitials || !telephone || !email) {
+      return res.status(400).send({ error: 'Full name, name with initials, telephone, and email are required' });
+    }
+
+    // Check if admin already exists
     const existing = await collection.where('email', '==', email).limit(1).get();
     if (!existing.empty) {
       return res.status(400).send({ error: 'Admin with this email already exists' });
     }
 
-    const profilePictureUrl = req.file
-      ? await uploadCompressedImage(req.file.buffer, req.file.originalname)
-      : null;
-
+    // ✅ You no longer handle profile picture
     const docRef = await collection.add({
       fullName,
       nameInitials,
       telephone,
       altTelephone: altTelephone || null,
       email,
-      profilePictureUrl,
       password: '', // Google sign-ins don't use a password
       createdAt: new Date(),
     });
@@ -41,6 +44,23 @@ exports.createAdmin = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
+
+exports.checkInvite = async (req, res) => {
+  try {
+    const email = req.query.email;
+    if (!email) return res.status(400).send({ error: 'Email is required' });
+
+    const invite = await inviteCollection.where('email', '==', email).limit(1).get();
+    if (invite.empty) {
+      return res.status(403).send({ error: 'Not invited' });
+    }
+
+    res.status(200).send({ invited: true });
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
 
 // ✅ Get current logged-in admin info
 exports.getLoggedInAdmin = async (req, res) => {
@@ -73,13 +93,13 @@ exports.updateAdmin = async (req, res) => {
     const doc = snapshot.docs[0];
     const updateData = req.body;
 
-    if (req.file) {
-      const profilePictureUrl = await uploadCompressedImage(
-        req.file.buffer,
-        req.file.originalname
-      );
-      updateData.profilePictureUrl = profilePictureUrl;
-    }
+    // if (req.file) {
+    //   const profilePictureUrl = await uploadCompressedImage(
+    //     req.file.buffer,
+    //     req.file.originalname
+    //   );
+    //   updateData.profilePictureUrl = profilePictureUrl;
+    // }
 
     await collection.doc(doc.id).update(updateData);
     res.status(200).send({ id: doc.id, ...updateData });
