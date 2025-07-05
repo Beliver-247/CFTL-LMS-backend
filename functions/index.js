@@ -11,6 +11,7 @@ const parentRoutes = require("./routes/parentRoutes");
 const authRoutes = require("./routes/authRoutes");
 const studentRoutes = require("./routes/studentRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const courseRoutes = require('./routes/courseRoutes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api/parents', parentRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/admins', adminRoutes);
+app.use('/api/courses', courseRoutes);
 
 exports.api = onRequest(
   {

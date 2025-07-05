@@ -7,7 +7,7 @@ exports.createTeacher = async (req, res) => {
     const data = req.body;
 
     // 🔍 Check for existing teacher with the same email
-    const existingSnapshot = await db.collection('teachers')
+    const existingSnapshot = await collection
       .where('email', '==', data.email)
       .limit(1)
       .get();
@@ -16,13 +16,21 @@ exports.createTeacher = async (req, res) => {
       return res.status(400).send({ error: 'Email already exists' });
     }
 
-    const docRef = await db.collection('teachers').add(data);
-    res.status(201).send({ id: docRef.id, ...data });
+    const teacherData = {
+      ...data,
+      role: 'teacher', // ✅ Assign role
+      createdAt: new Date()
+    };
+
+    const docRef = await collection.add(teacherData);
+
+    res.status(201).send({ id: docRef.id, ...teacherData });
 
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
 };
+
 exports.getTeacherProfile = async (req, res) => {
   try {
     const { uid, email } = req.user;
@@ -80,7 +88,12 @@ exports.getTeacherById = async (req, res) => {
 exports.updateTeacher = async (req, res) => {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+
+    // Prevent role override unless you're explicitly allowing it
+    if ('role' in data) {
+      delete data.role;
+    }
 
     // If email is being updated, check uniqueness
     if (data.email) {
@@ -95,6 +108,9 @@ exports.updateTeacher = async (req, res) => {
       }
     }
 
+    // Optional: track update time
+    data.updatedAt = new Date();
+
     await db.collection('teachers').doc(id).update(data);
     res.status(200).send({ id, ...data });
 
@@ -102,6 +118,7 @@ exports.updateTeacher = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
+
 
 
 exports.deleteTeacher = async (req, res) => {

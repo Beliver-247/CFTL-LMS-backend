@@ -102,11 +102,21 @@ exports.getStudentById = async (req, res) => {
     const doc = await collection.doc(req.params.id).get();
     if (!doc.exists) return res.status(404).send({ error: 'Student not found' });
 
-    res.status(200).send({ id: doc.id, ...doc.data() });
+    const student = { id: doc.id, ...doc.data() };
+
+    if (student.enrolledCourse?.id) {
+      const courseDoc = await db.collection('courses').doc(student.enrolledCourse.id).get();
+      if (courseDoc.exists) {
+        student.enrolledCourse.details = courseDoc.data();
+      }
+    }
+
+    res.status(200).send(student);
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
 };
+
 
 exports.updateStudent = async (req, res) => {
   try {
