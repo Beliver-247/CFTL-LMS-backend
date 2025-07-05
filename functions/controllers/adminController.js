@@ -50,7 +50,7 @@ const docRef = await collection.add({
 
 exports.checkInvite = async (req, res) => {
   try {
-    const email = req.query.email;
+    const email = req.query.email?.toLowerCase();
     if (!email) return res.status(400).send({ error: 'Email is required' });
 
     const invite = await inviteCollection.where('email', '==', email).limit(1).get();

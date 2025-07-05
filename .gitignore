@@ -1,3 +1,4 @@
 # .gitignore
 serviceAccountKey.json
 node_modules/
+firebase-debug.log
