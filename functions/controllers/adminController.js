@@ -7,12 +7,13 @@ const inviteCollection = db.collection('admin_invites');
 // ✅ Create new admin
 exports.createAdmin = async (req, res) => {
   try {
-    const {
-      fullName,
-      nameInitials,
-      telephone,
-      altTelephone,
-    } = req.body;
+const {
+  fullName,
+  nameInitials,
+  telephone,
+  altTelephone,
+  role 
+} = req.body;
 
     const email = req.user.email;
 
@@ -28,15 +29,17 @@ exports.createAdmin = async (req, res) => {
     }
 
     // ✅ You no longer handle profile picture
-    const docRef = await collection.add({
-      fullName,
-      nameInitials,
-      telephone,
-      altTelephone: altTelephone || null,
-      email,
-      password: '', // Google sign-ins don't use a password
-      createdAt: new Date(),
-    });
+const docRef = await collection.add({
+  fullName,
+  nameInitials,
+  telephone,
+  altTelephone: altTelephone || null,
+  email,
+  password: '', 
+  role: role || 'admin', 
+  createdAt: new Date(),
+});
+
 
     res.status(201).send({ id: docRef.id });
   } catch (err) {
