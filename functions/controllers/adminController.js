@@ -15,7 +15,7 @@ const {
   role 
 } = req.body;
 
-    const email = req.user.email;
+    const email = req.user.email.toLowerCase();
 
     // ✅ REQUIRED FIELD CHECK - ADD THIS HERE
     if (!fullName || !nameInitials || !telephone || !email) {
@@ -68,7 +68,7 @@ exports.checkInvite = async (req, res) => {
 // ✅ Get current logged-in admin info
 exports.getLoggedInAdmin = async (req, res) => {
   try {
-    const email = req.user.email;
+    const email = req.user.email.toLowerCase();
 
     const snapshot = await collection.where('email', '==', email).limit(1).get();
     if (snapshot.empty) {
@@ -86,7 +86,7 @@ exports.getLoggedInAdmin = async (req, res) => {
 // ✅ Update logged-in admin
 exports.updateAdmin = async (req, res) => {
   try {
-    const email = req.user.email;
+    const email = req.user.email.toLowerCase();
 
     const snapshot = await collection.where('email', '==', email).limit(1).get();
     if (snapshot.empty) {
@@ -115,7 +115,7 @@ exports.updateAdmin = async (req, res) => {
 // ✅ Delete logged-in admin
 exports.deleteAdmin = async (req, res) => {
   try {
-    const email = req.user.email;
+    const email = req.user.email.toLowerCase();
 
     const snapshot = await collection.where('email', '==', email).limit(1).get();
     if (snapshot.empty) {
