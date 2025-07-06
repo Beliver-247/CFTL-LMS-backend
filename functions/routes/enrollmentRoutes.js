@@ -2,7 +2,8 @@ const express = require('express');
 const {
   enrollStudent,
   getEnrollmentsByCourse,
-  deleteEnrollment
+  deleteEnrollment,
+  getEnrollmentsForCoordinator
 } = require('../controllers/enrollmentController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -13,5 +14,11 @@ const router = express.Router();
 router.post('/', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), enrollStudent);
 router.get('/course/:courseId', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), getEnrollmentsByCourse);
 router.delete('/:id', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), deleteEnrollment);
+router.get(
+  '/coordinator',
+  verifyFirebaseToken,
+  authorizeRole(['coordinator']),
+  getEnrollmentsForCoordinator
+);
 
 module.exports = router;

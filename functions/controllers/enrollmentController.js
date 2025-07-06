@@ -67,6 +67,39 @@ exports.getEnrollmentsByCourse = async (req, res) => {
   }
 };
 
+exports.getEnrollmentsForCoordinator = async (req, res) => {
+  try {
+    const coordinatorEmail = req.user.email;
+
+    const coursesSnap = await courseCollection.where('assignedTo', '==', coordinatorEmail).get();
+    const courseIds = coursesSnap.docs.map(doc => doc.id);
+
+    if (courseIds.length === 0) return res.status(200).send([]); // No assigned courses
+
+    const enrollmentSnap = await enrollmentCollection.where('courseId', 'in', courseIds).get();
+
+    const enrollments = [];
+
+    for (const doc of enrollmentSnap.docs) {
+      const enrollment = doc.data();
+      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
+
+      if (studentDoc.exists) {
+        enrollments.push({
+          id: doc.id,
+          ...enrollment,
+          student: { id: studentDoc.id, ...studentDoc.data() }
+        });
+      }
+    }
+
+    res.status(200).send(enrollments);
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+
 // ✅ Unenroll (delete) a student from a course
 exports.deleteEnrollment = async (req, res) => {
   try {
