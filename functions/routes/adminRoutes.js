@@ -1,11 +1,14 @@
 const express = require('express');
+const { authorizeRole } = require('../middleware/authorizeRole');
 // const multer = require('multer');
 const { checkInvite } = require('../controllers/adminController');
 const {
   createAdmin,
   getLoggedInAdmin,
   updateAdmin,
-  deleteAdmin
+  deleteAdmin,
+  getAllAdmins,
+  updateAdminById
 } = require('../controllers/adminController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -23,6 +26,9 @@ router.get('/me', verifyFirebaseToken, getLoggedInAdmin);
 
 // Update own profile (optional)
 router.put('/me', verifyFirebaseToken, updateAdmin);
+
+router.get('/all', verifyFirebaseToken, authorizeRole(['admin']), getAllAdmins);
+router.put('/:id', verifyFirebaseToken, authorizeRole(['admin']), updateAdminById);
 
 // Delete own profile (optional)
 router.delete('/me', verifyFirebaseToken, deleteAdmin);
