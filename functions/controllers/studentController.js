@@ -65,7 +65,7 @@ exports.createStudent = async (req, res) => {
         monthlyFee: Number(body.monthlyFee),
         preBudget: Number(body.preBudget),
         totalAmount: Number(body.totalAmount),
-        dob: new Date(dob),
+        dob: Timestamp.fromDate(new Date(dob)),
         parents: { mother, father },
         subjects: body.subjects,
         nominee,
