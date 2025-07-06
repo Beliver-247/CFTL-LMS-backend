@@ -98,6 +98,23 @@ exports.getAllCourses = async (req, res) => {
   }
 };
 
+// ✅ Get courses for a specific coordinator
+exports.getCoursesForCoordinator = async (req, res) => {
+  try {
+    const coordinatorEmail = req.user.email;
+
+    const snapshot = await courseCollection
+      .where('coordinatorEmail', '==', coordinatorEmail)
+      .get();
+
+    const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    res.status(200).send(courses);
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
 // ✅ Enroll student to a course
 exports.enrollStudent = async (req, res) => {
   try {

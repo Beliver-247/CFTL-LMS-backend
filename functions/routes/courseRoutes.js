@@ -5,7 +5,8 @@ const {
   enrollStudent,
   getStudentsForCoordinator,
   updateCourse,
-  deleteCourse
+  deleteCourse,
+  getCoursesForCoordinator
 } = require('../controllers/courseController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -19,6 +20,7 @@ router.get('/', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), ge
 router.put('/:courseId', verifyFirebaseToken, authorizeRole(['admin']), updateCourse);
 router.post('/enroll', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), enrollStudent);
 router.get('/coordinator/students', verifyFirebaseToken, authorizeRole(['coordinator']), getStudentsForCoordinator);
+router.get('/coordinator/courses', verifyFirebaseToken, authorizeRole(['coordinator']), getCoursesForCoordinator);
 router.delete('/:courseId', verifyFirebaseToken, authorizeRole(['admin']), deleteCourse);
 
 

@@ -112,6 +112,27 @@ exports.updateAdmin = async (req, res) => {
   }
 };
 
+exports.getAllAdmins = async (req, res) => {
+  try {
+    const snapshot = await collection.get();
+    const admins = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).send(admins);
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+exports.updateAdminById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await collection.doc(id).update(req.body);
+    res.status(200).send({ message: 'Updated successfully' });
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+
 // ✅ Delete logged-in admin
 exports.deleteAdmin = async (req, res) => {
   try {
