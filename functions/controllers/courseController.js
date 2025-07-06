@@ -1,6 +1,7 @@
 const { db } = require('../config/firebase');
 const { Timestamp } = require('firebase-admin/firestore');
 
+
 const courseCollection = db.collection('courses');
 const studentCollection = db.collection('students');
 const subjectCollection = db.collection('subjects');

@@ -13,6 +13,7 @@ const studentRoutes = require("./routes/studentRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const courseRoutes = require('./routes/courseRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
+const enrollmentRoutes = require('./routes/enrollmentRoutes');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use('/api/students', studentRoutes);
 app.use('/api/admins', adminRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/subjects', subjectRoutes);
+app.use('/api/enrollments', enrollmentRoutes);
 
 exports.api = onRequest(
   {
