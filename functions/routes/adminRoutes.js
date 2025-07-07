@@ -1,6 +1,5 @@
 const express = require('express');
 const { authorizeRole } = require('../middleware/authorizeRole');
-// const multer = require('multer');
 const { checkInvite } = require('../controllers/adminController');
 const {
   createAdmin,
@@ -14,7 +13,6 @@ const {
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
-// const upload = multer({ storage: multer.memoryStorage() });
 
 // ✅ Public route to create admin
 router.post('/', verifyFirebaseToken, createAdmin);
