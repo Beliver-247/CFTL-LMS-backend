@@ -15,7 +15,7 @@ const router = express.Router();
 
 // Only admins can create, update, delete subjects
 router.post('/', verifyFirebaseToken, authorizeRole(['admin']), createSubject);
-router.put('/:subjectId', verifyFirebaseToken, authorizeRole(['admin']), updateSubject);
+router.put('/:subjectId', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), updateSubject);
 router.delete('/:subjectId', verifyFirebaseToken, authorizeRole(['admin']), deleteSubject);
 
 // Admins and coordinators can read subjects

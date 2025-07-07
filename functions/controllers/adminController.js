@@ -1,6 +1,5 @@
 const { db } = require('../config/firebase');
 const bcrypt = require('bcryptjs');
-// const { uploadCompressedImage } = require('../utils/uploadToGCS'); // include this if you're uploading images
 const collection = db.collection('admins');
 const inviteCollection = db.collection('admin_invites');
 
@@ -95,14 +94,6 @@ exports.updateAdmin = async (req, res) => {
 
     const doc = snapshot.docs[0];
     const updateData = req.body;
-
-    // if (req.file) {
-    //   const profilePictureUrl = await uploadCompressedImage(
-    //     req.file.buffer,
-    //     req.file.originalname
-    //   );
-    //   updateData.profilePictureUrl = profilePictureUrl;
-    // }
 
     await collection.doc(doc.id).update(updateData);
     res.status(200).send({ id: doc.id, ...updateData });

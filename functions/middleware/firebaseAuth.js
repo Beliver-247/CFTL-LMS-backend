@@ -13,7 +13,7 @@ const verifyFirebaseToken = async (req, res, next) => {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const email = decodedToken.email;
 
-    // 1. Try to find in admins collection
+    // 1. Check admins
     const adminSnap = await db.collection('admins')
       .where('email', '==', email)
       .limit(1)
@@ -26,29 +26,53 @@ const verifyFirebaseToken = async (req, res, next) => {
         uid: decodedToken.uid,
         role: userData.role || 'admin'
       };
-    } else {
-      // 2. If not in admins, check if invited
-      const inviteSnap = await db.collection('admin_invites')
-        .where('email', '==', email)
-        .limit(1)
-        .get();
-
-      if (!inviteSnap.empty) {
-        // ✅ Allow through with limited access to complete profile
-        req.user = {
-          email,
-          uid: decodedToken.uid,
-          role: 'invited-admin'
-        };
-      } else {
-        return res.status(403).send({ error: 'User not found in admins or invites' });
-      }
+      return next();
     }
 
-    next();
+    // 2. Check admin_invites
+    const inviteSnap = await db.collection('admin_invites')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    if (!inviteSnap.empty) {
+      req.user = {
+        email,
+        uid: decodedToken.uid,
+        role: 'invited-admin'
+      };
+      return next();
+    }
+
+// 🔧 3. Check teachers
+const teacherSnap = await db.collection('teachers')
+  .where('email', '==', email)
+  .limit(1)
+  .get();
+
+if (!teacherSnap.empty) {
+  const teacherData = teacherSnap.docs[0].data();
+  req.user = {
+    email,
+    uid: decodedToken.uid,
+    role: teacherData.role || 'teacher',
+    ...teacherData
+  };
+} else {
+  // ✅ Allow access to complete profile route for new Google sign-ins
+  req.user = {
+    email,
+    uid: decodedToken.uid,
+    role: 'incomplete-teacher',
+  };
+}
+
+return next();
+
   } catch (error) {
     return res.status(403).send({ error: 'Unauthorized' });
   }
 };
+
 
 module.exports = { verifyFirebaseToken };

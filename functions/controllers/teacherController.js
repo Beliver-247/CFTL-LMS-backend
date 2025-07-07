@@ -33,14 +33,16 @@ exports.createTeacher = async (req, res) => {
 
 exports.getTeacherProfile = async (req, res) => {
   try {
-    const { uid, email } = req.user;
+const { email } = req.user;
+const snapshot = await db.collection('teachers').where('email', '==', email).limit(1).get();
 
-    const doc = await db.collection('teachers').doc(uid).get();
-    if (!doc.exists) {
-      return res.status(404).send({ error: 'Profile not found' });
-    }
+if (snapshot.empty) {
+  return res.status(404).send({ error: 'Profile not found' });
+}
 
-    return res.status(200).send(doc.data());
+const doc = snapshot.docs[0];
+return res.status(200).send({ id: doc.id, ...doc.data() });
+
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
