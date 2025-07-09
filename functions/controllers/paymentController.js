@@ -53,6 +53,51 @@ const newDoc = await paymentCollection.add({
   }
 };
 
+// 🔍 Get payments for all children of the logged-in parent
+exports.getPaymentsForParent = async (req, res) => {
+  try {
+    const nic = req.user.nic; // extracted from JWT
+
+    // Step 1: Get all children of the parent
+    const studentsSnap = await db.collection('students').get();
+    const children = studentsSnap.docs
+      .filter(doc => {
+        const s = doc.data();
+        return (
+          s.parents?.mother?.nic === nic ||
+          s.parents?.father?.nic === nic ||
+          s.nominee?.nic === nic
+        );
+      })
+      .map(doc => ({ id: doc.id, ...doc.data() }));
+
+    if (children.length === 0) return res.status(200).send([]);
+
+    // Step 2: Get payments for all those students
+    const studentIds = children.map(child => child.id);
+    const paymentsSnap = await db.collection('payments')
+      .where('studentId', 'in', studentIds.slice(0, 10)) // Firestore limits 'in' queries to 10
+      .get();
+
+    const payments = paymentsSnap.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        remainingAmount: Math.max(data.amountDue - data.amountPaid, 0),
+        paidOn: data.paidOn ? data.paidOn.toDate().toISOString().split("T")[0] : null,
+        createdAt: data.createdAt?.toDate().toISOString(),
+      };
+    });
+
+    res.status(200).send(payments);
+  } catch (err) {
+    console.error("Error fetching parent payments:", err);
+    res.status(500).send({ error: err.message });
+  }
+};
+
+
 // ✅ Get all payment records
 exports.getAllPayments = async (req, res) => {
   try {
