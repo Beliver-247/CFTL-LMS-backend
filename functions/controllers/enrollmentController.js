@@ -1,9 +1,10 @@
-const { db } = require('../config/firebase');
-const { Timestamp } = require('firebase-admin/firestore');
+const { db } = require("../config/firebase");
+const { Timestamp } = require("firebase-admin/firestore");
 
-const enrollmentCollection = db.collection('enrollments');
-const studentCollection = db.collection('students');
-const courseCollection = db.collection('courses');
+const enrollmentCollection = db.collection("enrollments");
+const studentCollection = db.collection("students");
+const courseCollection = db.collection("courses");
+const paymentCollection = db.collection("payments");
 
 // ✅ Enroll a student to a course
 exports.enrollStudent = async (req, res) => {
@@ -13,28 +14,65 @@ exports.enrollStudent = async (req, res) => {
 
     const [studentDoc, courseDoc] = await Promise.all([
       studentCollection.doc(studentId).get(),
-      courseCollection.doc(courseId).get()
+      courseCollection.doc(courseId).get(),
     ]);
 
-    if (!studentDoc.exists) return res.status(404).send({ error: 'Student not found' });
-    if (!courseDoc.exists) return res.status(404).send({ error: 'Course not found' });
+    if (!studentDoc.exists)
+      return res.status(404).send({ error: "Student not found" });
+    if (!courseDoc.exists)
+      return res.status(404).send({ error: "Course not found" });
 
     const course = courseDoc.data();
-    const durationMonths = course.duration === '1 Year' ? 12 : 6;
+    const durationMonths = course.duration === "1 Year" ? 12 : 6;
     const monthlyFee = Math.floor(course.totalFee / durationMonths);
 
+    // Create enrollment record
     const newEnrollment = {
       studentId,
       courseId,
       enrolledBy,
       enrollmentDate: Timestamp.now(),
-      status: 'active',
+      status: "active",
       totalFee: course.totalFee,
-      monthlyFee
+      monthlyFee,
     };
 
-    const docRef = await enrollmentCollection.add(newEnrollment);
-    res.status(201).send({ id: docRef.id, ...newEnrollment });
+    const enrollmentRef = await enrollmentCollection.add(newEnrollment);
+
+    // Generate monthly payment records
+    const startDate = new Date(); // current month
+    const payments = [];
+
+    for (let i = 0; i < durationMonths; i++) {
+      const monthDate = new Date(
+        startDate.getFullYear(),
+        startDate.getMonth() + i
+      );
+      const month = `${monthDate.getFullYear()}-${String(
+        monthDate.getMonth() + 1
+      ).padStart(2, "0")}`;
+
+      const paymentData = {
+        studentId,
+        courseId,
+        enrollmentId: enrollmentRef.id,
+        month,
+        amountDue: monthlyFee,
+        amountPaid: 0,
+        remainingAmount: monthlyFee,
+        status: "Unpaid",
+        paidOn: null,
+        paymentMethod: null,
+        transactionId: null,
+        createdAt: Timestamp.now(),
+      };
+
+      payments.push(paymentData);
+    }
+
+    await Promise.all(payments.map((p) => paymentCollection.add(p)));
+
+    res.status(201).send({ id: enrollmentRef.id, ...newEnrollment });
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
@@ -45,18 +83,22 @@ exports.getEnrollmentsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
 
-    const enrollmentSnap = await enrollmentCollection.where('courseId', '==', courseId).get();
+    const enrollmentSnap = await enrollmentCollection
+      .where("courseId", "==", courseId)
+      .get();
 
     const enrollments = [];
     for (const doc of enrollmentSnap.docs) {
       const enrollment = doc.data();
-      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
+      const studentDoc = await studentCollection
+        .doc(enrollment.studentId)
+        .get();
 
       if (studentDoc.exists) {
         enrollments.push({
           id: doc.id,
           ...enrollment,
-          student: { id: studentDoc.id, ...studentDoc.data() }
+          student: { id: studentDoc.id, ...studentDoc.data() },
         });
       }
     }
@@ -71,24 +113,30 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
   try {
     const coordinatorEmail = req.user.email;
 
-    const coursesSnap = await courseCollection.where('assignedTo', '==', coordinatorEmail).get();
-    const courseIds = coursesSnap.docs.map(doc => doc.id);
+    const coursesSnap = await courseCollection
+      .where("assignedTo", "==", coordinatorEmail)
+      .get();
+    const courseIds = coursesSnap.docs.map((doc) => doc.id);
 
     if (courseIds.length === 0) return res.status(200).send([]); // No assigned courses
 
-    const enrollmentSnap = await enrollmentCollection.where('courseId', 'in', courseIds).get();
+    const enrollmentSnap = await enrollmentCollection
+      .where("courseId", "in", courseIds)
+      .get();
 
     const enrollments = [];
 
     for (const doc of enrollmentSnap.docs) {
       const enrollment = doc.data();
-      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
+      const studentDoc = await studentCollection
+        .doc(enrollment.studentId)
+        .get();
 
       if (studentDoc.exists) {
         enrollments.push({
           id: doc.id,
           ...enrollment,
-          student: { id: studentDoc.id, ...studentDoc.data() }
+          student: { id: studentDoc.id, ...studentDoc.data() },
         });
       }
     }
@@ -98,7 +146,6 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
-
 
 // ✅ Unenroll (delete) a student from a course
 exports.deleteEnrollment = async (req, res) => {

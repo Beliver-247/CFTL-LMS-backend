@@ -14,6 +14,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const courseRoutes = require('./routes/courseRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
+const paymentRoutes = require('./routes/paymentRoutes'); 
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/admins', adminRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
+app.use('/api/payments', paymentRoutes); 
 
 exports.api = onRequest(
   {
