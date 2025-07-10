@@ -22,11 +22,35 @@ exports.enrollStudent = async (req, res) => {
     if (!courseDoc.exists)
       return res.status(404).send({ error: "Course not found" });
 
+    const existingEnrollments = await enrollmentCollection
+      .where("studentId", "==", studentId)
+      .get();
+
+    const hasActive = existingEnrollments.docs.some(
+      (doc) => doc.data().status === "active"
+    );
+
+    if (hasActive) {
+      return res.status(400).send({
+        error: "Student already has an active enrollment",
+      });
+    }
+
+    const hasInactiveInSameCourse = existingEnrollments.docs.some(
+      (doc) =>
+        doc.data().status === "inactive" && doc.data().courseId === courseId
+    );
+
+    if (hasInactiveInSameCourse) {
+      return res.status(400).send({
+        error: "Student already has an inactive enrollment in this course",
+      });
+    }
+
     const course = courseDoc.data();
     const durationMonths = course.duration === "1 Year" ? 12 : 6;
     const monthlyFee = Math.floor(course.totalFee / durationMonths);
 
-    // Create enrollment record
     const newEnrollment = {
       studentId,
       courseId,
@@ -39,8 +63,7 @@ exports.enrollStudent = async (req, res) => {
 
     const enrollmentRef = await enrollmentCollection.add(newEnrollment);
 
-    // Generate monthly payment records
-    const startDate = new Date(); // current month
+    const startDate = new Date();
     const payments = [];
 
     for (let i = 0; i < durationMonths; i++) {
@@ -78,6 +101,7 @@ exports.enrollStudent = async (req, res) => {
   }
 };
 
+
 // ✅ Get students enrolled in a specific course
 exports.getEnrollmentsByCourse = async (req, res) => {
   try {
@@ -114,8 +138,9 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
     const coordinatorEmail = req.user.email;
 
     const coursesSnap = await courseCollection
-      .where("assignedTo", "==", coordinatorEmail)
+      .where("coordinatorEmail", "==", coordinatorEmail)
       .get();
+
     const courseIds = coursesSnap.docs.map((doc) => doc.id);
 
     if (courseIds.length === 0) return res.status(200).send([]); // No assigned courses
@@ -137,6 +162,9 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
           id: doc.id,
           ...enrollment,
           student: { id: studentDoc.id, ...studentDoc.data() },
+          course: courseIds.includes(enrollment.courseId)
+            ? coursesSnap.docs.find((d) => d.id === enrollment.courseId)?.data()
+            : null,
         });
       }
     }
@@ -146,6 +174,7 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
+
 
 exports.getAllStudentsWithOptionalEnrollment = async (req, res) => {
   try {
@@ -185,31 +214,45 @@ exports.getAllStudentsWithOptionalEnrollment = async (req, res) => {
   }
 };
 
-
-exports.getAllEnrollmentsWithStudentCourse = async (req, res) => {
+exports.updateEnrollmentStatus = async (req, res) => {
   try {
-    const enrollmentSnap = await enrollmentCollection.get();
-    const enrollments = [];
+    const { id } = req.params;
+    const { status } = req.body;
 
-    for (const doc of enrollmentSnap.docs) {
-      const enrollment = doc.data();
-      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
-      const courseDoc = await courseCollection.doc(enrollment.courseId).get();
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).send({ error: "Invalid status" });
+    }
 
-      if (studentDoc.exists && courseDoc.exists) {
-        enrollments.push({
-          id: doc.id,
-          student: { id: studentDoc.id, ...studentDoc.data() },
-          course: { id: courseDoc.id, ...courseDoc.data() },
+    const enrollmentDoc = await enrollmentCollection.doc(id).get();
+    if (!enrollmentDoc.exists) {
+      return res.status(404).send({ error: "Enrollment not found" });
+    }
+
+    const enrollment = enrollmentDoc.data();
+
+    if (status === "active") {
+      const activeEnrollmentsSnap = await enrollmentCollection
+        .where("studentId", "==", enrollment.studentId)
+        .where("status", "==", "active")
+        .get();
+
+      const isActiveElsewhere = activeEnrollmentsSnap.docs.some(doc => doc.id !== id);
+
+      if (isActiveElsewhere) {
+        return res.status(400).send({
+          error: "Student is already active in another course"
         });
       }
     }
 
-    res.status(200).send(enrollments);
+    await enrollmentCollection.doc(id).update({ status });
+    res.status(200).send({ message: "Status updated" });
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
 };
+
+
 
 
 

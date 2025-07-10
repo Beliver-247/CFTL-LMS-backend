@@ -247,9 +247,25 @@ exports.deleteCourse = async (req, res) => {
       return res.status(404).send({ error: 'Course not found' });
     }
 
-    await courseRef.delete();
+    // Set related enrollments to inactive
+    const enrollmentSnap = await enrollmentCollection
+      .where('courseId', '==', courseId)
+      .get();
+
+    const batch = db.batch();
+
+    enrollmentSnap.docs.forEach(enrollmentDoc => {
+      batch.update(enrollmentDoc.ref, { status: 'inactive' });
+    });
+
+    // Delete the course
+    batch.delete(courseRef);
+
+    await batch.commit();
+
     res.status(204).send();
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
 };
+
