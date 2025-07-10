@@ -4,8 +4,8 @@ const {
   getEnrollmentsByCourse,
   deleteEnrollment,
   getEnrollmentsForCoordinator,
-  getAllEnrollmentsWithStudentCourse,
-  getAllStudentsWithOptionalEnrollment
+  getAllStudentsWithOptionalEnrollment,
+  updateEnrollmentStatus
 } = require('../controllers/enrollmentController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -22,8 +22,7 @@ router.get(
   authorizeRole(["admin"]),
   getAllStudentsWithOptionalEnrollment
 );
-
-
+router.patch('/:id/status', verifyFirebaseToken, authorizeRole(['coordinator']), updateEnrollmentStatus);
 router.get(
   '/coordinator',
   verifyFirebaseToken,
