@@ -147,6 +147,72 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
   }
 };
 
+exports.getAllStudentsWithOptionalEnrollment = async (req, res) => {
+  try {
+    const [studentsSnap, enrollmentsSnap] = await Promise.all([
+      studentCollection.get(),
+      enrollmentCollection.get()
+    ]);
+
+    const coursesMap = {};
+    const courseDocs = await courseCollection.get();
+    courseDocs.forEach(doc => {
+      coursesMap[doc.id] = { id: doc.id, ...doc.data() };
+    });
+
+    const enrollmentsMap = {};
+    enrollmentsSnap.docs.forEach(doc => {
+      const data = doc.data();
+      enrollmentsMap[data.studentId] = data.courseId;
+    });
+
+    const results = [];
+
+    for (const studentDoc of studentsSnap.docs) {
+      const student = { id: studentDoc.id, ...studentDoc.data() };
+      const courseId = enrollmentsMap[student.id];
+      const course = courseId ? coursesMap[courseId] : null;
+
+      results.push({
+        student,
+        course,
+      });
+    }
+
+    res.status(200).send(results);
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+
+exports.getAllEnrollmentsWithStudentCourse = async (req, res) => {
+  try {
+    const enrollmentSnap = await enrollmentCollection.get();
+    const enrollments = [];
+
+    for (const doc of enrollmentSnap.docs) {
+      const enrollment = doc.data();
+      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
+      const courseDoc = await courseCollection.doc(enrollment.courseId).get();
+
+      if (studentDoc.exists && courseDoc.exists) {
+        enrollments.push({
+          id: doc.id,
+          student: { id: studentDoc.id, ...studentDoc.data() },
+          course: { id: courseDoc.id, ...courseDoc.data() },
+        });
+      }
+    }
+
+    res.status(200).send(enrollments);
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+
+
 // ✅ Unenroll (delete) a student from a course
 exports.deleteEnrollment = async (req, res) => {
   try {
