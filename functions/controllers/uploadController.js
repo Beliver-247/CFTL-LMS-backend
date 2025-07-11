@@ -1,25 +1,24 @@
-// controllers/uploadController.js
-// process.env.GOOGLE_APPLICATION_CREDENTIALS = './keys/firebase-service-account.json';
+// uploadController.js
 const { Storage } = require('@google-cloud/storage');
 const { v4: uuidv4 } = require('uuid');
-console.log('Loaded credentials from:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
 
 const bucketName = process.env.GCS_BUCKET || 'cftl-lms.firebasestorage.app';
-const storage = new Storage();
 
 exports.getSignedUrl = async (req, res) => {
   try {
     const { fileType, fileName } = req.body;
-
     if (!fileType || !fileName) {
       return res.status(400).json({ error: 'Missing fileType or fileName' });
     }
+
+    // ✅ Initialize Storage client inside handler (runtime-safe)
+    const storage = new Storage();
 
     const destination = `receipts/${uuidv4()}_${fileName}`;
     const options = {
       version: 'v4',
       action: 'write',
-      expires: Date.now() + 5 * 60 * 1000, // 5 minutes
+      expires: Date.now() + 5 * 60 * 1000,
       contentType: fileType,
     };
 
