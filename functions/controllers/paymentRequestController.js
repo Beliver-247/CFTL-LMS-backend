@@ -59,6 +59,125 @@ exports.getAllRequests = async (req, res) => {
   }
 };
 
+exports.getRequestsForParent = async (req, res) => {
+  try {
+    const parentNIC = req.user.nic;
+
+    // Step 1: Get children of this parent
+    const studentsSnap = await db.collection('students').get();
+    const children = studentsSnap.docs.filter(doc => {
+      const s = doc.data();
+      return (
+        s.parents?.mother?.nic === parentNIC ||
+        s.parents?.father?.nic === parentNIC ||
+        s.nominee?.nic === parentNIC
+      );
+    });
+
+    if (children.length === 0) return res.status(200).json([]);
+
+    const childIds = children.map(doc => doc.id);
+
+    // Step 2: Get payment requests for those children
+    const requestsSnap = await paymentRequests
+      .where('studentId', 'in', childIds.slice(0, 10))
+      .orderBy('requestedOn', 'desc')
+      .get();
+
+    const requests = requestsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Step 3: Map student names
+    const studentMap = {};
+    children.forEach(child => {
+      const data = child.data();
+      studentMap[child.id] = data.nameFull || 'Unnamed Student';
+    });
+
+    // Step 4: Fetch course names
+    const courseSnap = await db.collection('courses').get();
+    const courseMap = {};
+    courseSnap.docs.forEach(doc => {
+      courseMap[doc.id] = doc.data().name || 'Unnamed Course';
+    });
+
+    // Step 5: Enrich each request with names
+const enrichedRequests = requests.map(req => ({
+  ...req,
+  studentName: studentMap[req.studentId] || req.studentId,
+  courseName: courseMap[req.courseId] || req.courseId,
+  requestedOn: req.requestedOn?.toDate?.().toISOString() || null,
+}));
+
+
+    res.status(200).json(enrichedRequests);
+  } catch (err) {
+    console.error('Error fetching parent payment requests:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getRequestsForCoordinator = async (req, res) => {
+  try {
+    const coordinatorEmail = req.user.email;
+
+    // 1. Get all courses assigned to the coordinator
+    const coursesSnap = await db.collection('courses')
+      .where('coordinatorEmail', '==', coordinatorEmail)
+      .get();
+
+    const courseIds = coursesSnap.docs.map(doc => doc.id);
+    if (courseIds.length === 0) return res.status(200).json([]);
+
+    // 2. Get all payment requests for these courses
+    const requestsSnap = await paymentRequests
+      .where('courseId', 'in', courseIds.slice(0, 10)) // Firestore "in" limitation
+      .orderBy('requestedOn', 'desc')
+      .get();
+
+    const requests = requestsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    // 3. Get student name mapping
+    const studentIds = [...new Set(requests.map(r => r.studentId))];
+    const studentSnaps = await Promise.all(
+      studentIds.map(id => db.collection('students').doc(id).get())
+    );
+    const studentMap = {};
+    studentSnaps.forEach(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        studentMap[doc.id] = data.nameFull || 'Unnamed Student';
+      }
+    });
+
+    // 4. Create course name mapping
+    const courseMap = {};
+    coursesSnap.docs.forEach(doc => {
+      courseMap[doc.id] = doc.data().name || 'Unnamed Course';
+    });
+
+    // 5. Enrich requests
+    const enriched = requests.map(req => ({
+      ...req,
+      studentName: studentMap[req.studentId] || req.studentId,
+      courseName: courseMap[req.courseId] || req.courseId
+    }));
+
+    res.status(200).json(enriched);
+  } catch (err) {
+    console.error('Coordinator request fetch error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+
+
 exports.approveRequest = async (req, res) => {
   try {
     const { id } = req.params;
