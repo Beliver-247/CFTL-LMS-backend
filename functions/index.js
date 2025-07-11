@@ -15,6 +15,8 @@ const courseRoutes = require('./routes/courseRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const paymentRoutes = require('./routes/paymentRoutes'); 
+const uploadRoutes = require('./routes/uploadRoutes');
+const paymentRequestRoutes = require('./routes/paymentRequestRoutes');
 
 const app = express();
 
@@ -32,6 +34,8 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/payments', paymentRoutes); 
+app.use('/api/uploads', uploadRoutes);
+app.use('/api/payment-requests', paymentRequestRoutes);
 
 exports.api = onRequest(
   {
