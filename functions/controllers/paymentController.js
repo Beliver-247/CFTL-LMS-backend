@@ -90,13 +90,26 @@ exports.getPaymentsForParent = async (req, res) => {
       };
     });
 
-    res.status(200).send(payments);
+    // Step 3: Fetch course names and map them
+    const courseSnap = await db.collection('courses').get();
+    const courseMap = {};
+    courseSnap.docs.forEach(doc => {
+      const c = doc.data();
+      courseMap[doc.id] = c.name || 'Unnamed Course';
+    });
+
+    // Step 4: Add courseName to each payment
+    const enrichedPayments = payments.map(p => ({
+      ...p,
+      courseName: courseMap[p.courseId] || 'Unknown Course'
+    }));
+
+    res.status(200).send(enrichedPayments);
   } catch (err) {
     console.error("Error fetching parent payments:", err);
     res.status(500).send({ error: err.message });
   }
 };
-
 
 // ✅ Get all payment records
 exports.getAllPayments = async (req, res) => {

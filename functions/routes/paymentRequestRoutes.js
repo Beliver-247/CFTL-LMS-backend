@@ -4,6 +4,8 @@ const {
   createRequest,
   getAllRequests,
   approveRequest,
+  getRequestsForParent,
+  getRequestsForCoordinator
 } = require('../controllers/paymentRequestController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -20,5 +22,8 @@ router.post(
 
 router.get('/', verifyFirebaseToken, authorizeRole(['coordinator']), getAllRequests);
 router.put('/:id/approve', verifyFirebaseToken, authorizeRole(['coordinator']), approveRequest);
+router.get('/parent', authenticate, getRequestsForParent);
+router.get('/coordinator', verifyFirebaseToken, authorizeRole(['coordinator']), getRequestsForCoordinator);
+
 
 module.exports = router;
