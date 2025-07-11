@@ -1,5 +1,5 @@
 // controllers/uploadController.js
-process.env.GOOGLE_APPLICATION_CREDENTIALS = './keys/firebase-service-account.json';
+// process.env.GOOGLE_APPLICATION_CREDENTIALS = './keys/firebase-service-account.json';
 const { Storage } = require('@google-cloud/storage');
 const { v4: uuidv4 } = require('uuid');
 console.log('Loaded credentials from:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
