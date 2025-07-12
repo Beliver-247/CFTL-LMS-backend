@@ -1,9 +1,9 @@
 name: Deploy Firebase Functions
 
-on:
-  push:
-    branches:
-      - main  # change if your backend deploy branch is different
+# on:
+#   push:
+#     branches:
+#       - main  # change if your backend deploy branch is different
 
 jobs:
   deploy:
