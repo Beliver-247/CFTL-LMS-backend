@@ -21,10 +21,22 @@ exports.createRequest = async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Ensure one request per payment
-    const existing = await paymentRequests.where('paymentId', '==', paymentId).limit(1).get();
-    if (!existing.empty) {
-      return res.status(409).json({ error: 'Request already exists for this payment' });
+    // Check for pending request
+    const pendingSnap = await paymentRequests
+      .where('paymentId', '==', paymentId)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+    if (!pendingSnap.empty) {
+      return res.status(409).json({ error: 'A pending request already exists for this payment.' });
+    }
+
+    // Limit to 3 total requests per payment
+    const countSnap = await paymentRequests
+      .where('paymentId', '==', paymentId)
+      .get();
+    if (countSnap.size >= 3) {
+      return res.status(409).json({ error: 'Maximum of 3 requests allowed per payment.' });
     }
 
     const newDoc = await paymentRequests.add({
@@ -40,6 +52,7 @@ exports.createRequest = async (req, res) => {
       status: 'pending',
       approvedBy: null,
       approvedOn: null,
+      rejectionReason: null,
     });
 
     res.status(201).json({ id: newDoc.id });
@@ -48,6 +61,7 @@ exports.createRequest = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 exports.getAllRequests = async (req, res) => {
   try {
@@ -175,9 +189,6 @@ exports.getRequestsForCoordinator = async (req, res) => {
   }
 };
 
-
-
-
 exports.approveRequest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -224,3 +235,36 @@ exports.approveRequest = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+exports.rejectRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejectionReason } = req.body;
+    const email = req.user.email;
+
+    if (!rejectionReason || rejectionReason.trim() === '') {
+      return res.status(400).json({ error: 'Rejection reason is required.' });
+    }
+
+    const doc = await paymentRequests.doc(id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Request not found' });
+
+    const requestData = doc.data();
+    if (requestData.status !== 'pending') {
+      return res.status(400).json({ error: 'Request already processed' });
+    }
+
+    await paymentRequests.doc(id).update({
+      status: 'rejected',
+      approvedBy: email,
+      approvedOn: Timestamp.now(),
+      rejectionReason,
+    });
+
+    res.status(200).json({ message: 'Request rejected' });
+  } catch (err) {
+    console.error('Rejection error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+

@@ -5,7 +5,8 @@ const {
   getAllRequests,
   approveRequest,
   getRequestsForParent,
-  getRequestsForCoordinator
+  getRequestsForCoordinator,
+  rejectRequest
 } = require('../controllers/paymentRequestController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -20,8 +21,9 @@ router.post(
   createRequest
 );
 
-router.get('/', verifyFirebaseToken, authorizeRole(['coordinator']), getAllRequests);
-router.put('/:id/approve', verifyFirebaseToken, authorizeRole(['coordinator']), approveRequest);
+router.get('/', verifyFirebaseToken, authorizeRole(['coordinator','admin']), getAllRequests);
+router.put('/:id/approve', verifyFirebaseToken, authorizeRole(['coordinator','admin']), approveRequest);
+router.put('/:id/reject', verifyFirebaseToken, authorizeRole(['coordinator','admin']), rejectRequest);
 router.get('/parent', authenticate, getRequestsForParent);
 router.get('/coordinator', verifyFirebaseToken, authorizeRole(['coordinator']), getRequestsForCoordinator);
 
