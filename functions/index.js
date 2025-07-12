@@ -17,6 +17,7 @@ const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const paymentRoutes = require('./routes/paymentRoutes'); 
 const uploadRoutes = require('./routes/uploadRoutes');
 const paymentRequestRoutes = require('./routes/paymentRequestRoutes');
+const registrationRequestRoutes = require('./routes/registrationRequestRoutes');
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/payments', paymentRoutes); 
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/payment-requests', paymentRequestRoutes);
+app.use('/api/registration-requests', registrationRequestRoutes);
 
 exports.api = onRequest(
   {
