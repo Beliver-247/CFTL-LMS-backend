@@ -4,7 +4,7 @@ const settingsDoc = db.collection('config').doc('startingMonths');
 
 // Helper validation functions
 const isValidEmail = (email) => /\S+@\S+\.\S+/.test(email);
-const isValidPhone = (phone) => /^\d{10}$/.test(phone);
+const isValidPhone = (phone) => /^\d{3}\s?\d{7}$/.test(phone);
 const isValidName = (name) => name.trim().split(/\s+/).length >= 2;
 
 exports.createRequest = async (req, res) => {
