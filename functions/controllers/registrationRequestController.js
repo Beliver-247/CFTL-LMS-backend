@@ -47,25 +47,29 @@ exports.getAllRequests = async (_req, res) => {
   }
 };
 
-exports.getStartingMonths = async (_req, res) => {
+// getStartingMonths
+exports.getStartingMonths = async (req, res) => {
   try {
-    const doc = await settingsDoc.get();
-    if (!doc.exists) return res.status(404).send({ error: 'Settings not found' });
-    res.status(200).send(doc.data());
+    const doc = await db.collection('config').doc('startingMonths').get();
+    if (!doc.exists) return res.status(200).json({
+      OL_6month: [], OL_1year: [], AL_6month: [], AL_1year: []
+    });
+
+    res.status(200).json(doc.data());
   } catch (err) {
-    res.status(500).send({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };
 
+// setStartingMonths
 exports.setStartingMonths = async (req, res) => {
   try {
-    const { months } = req.body;
-    if (!Array.isArray(months) || months.length !== 2) {
-      return res.status(400).send({ error: 'Exactly two starting months must be provided' });
-    }
-    await settingsDoc.set({ months });
-    res.status(200).send({ message: 'Starting months updated', months });
+    const updates = req.body;
+
+    await db.collection('config').doc('startingMonths').set(updates, { merge: true });
+    res.status(200).json({ message: 'Starting months updated successfully' });
   } catch (err) {
-    res.status(500).send({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };
+
