@@ -1,4 +1,4 @@
-const db = require("../config/firebase");
+const { db } = require("../config/firebase");
 
 // Helper to validate nested syllabus structure (optional)
 const validateSyllabusStructure = (syllabus) => {
