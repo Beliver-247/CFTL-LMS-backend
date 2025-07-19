@@ -102,6 +102,7 @@ exports.deleteSyllabus = async (req, res) => {
 exports.markSubtopicComplete = async (req, res) => {
   const { id, weekNumber, topicIndex, subIndex } = req.params;
   const { uid, email, role } = req.user;
+  console.log("Subtopic update by user:", req.user);
 
   if (role !== "teacher") {
     return res.status(403).json({ error: "Only teachers can perform this action" });
