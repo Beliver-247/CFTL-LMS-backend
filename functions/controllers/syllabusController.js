@@ -192,3 +192,83 @@ exports.approveSyllabusChanges = async (req, res) => {
   }
 };
 
+exports.approveSubtopic = async (req, res) => {
+  const { id, weekNumber, topicIndex, subIndex } = req.params;
+  const { role, email } = req.user;
+
+  if (role !== "coordinator") {
+    return res.status(403).json({ error: "Only coordinators can approve changes" });
+  }
+
+  try {
+    const docRef = db.collection("syllabus").doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found" });
+
+    const syllabus = doc.data();
+    const weekIdx = Number(weekNumber) - 1;
+    const topicIdx = Number(topicIndex);
+    const subIdx = Number(subIndex);
+
+    const subtopic = syllabus.weeks[weekIdx]?.topics[topicIdx]?.subtopics[subIdx];
+    if (!subtopic || !subtopic.pendingApproval) {
+      return res.status(400).json({ error: "Subtopic is not pending approval" });
+    }
+
+    delete subtopic.pendingApproval;
+    subtopic.approvedAt = new Date().toISOString();
+    subtopic.approvedBy = email;
+
+    syllabus.updatedAt = new Date().toISOString();
+    await docRef.set(syllabus);
+    res.status(200).json({ message: "Subtopic approved" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.approveTopic = async (req, res) => {
+  const { id, weekNumber, topicIndex } = req.params;
+  const { role, email } = req.user;
+
+  if (role !== "coordinator") {
+    return res.status(403).json({ error: "Only coordinators can approve changes" });
+  }
+
+  try {
+    const docRef = db.collection("syllabus").doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found" });
+
+    const syllabus = doc.data();
+    const weekIdx = Number(weekNumber) - 1;
+    const topicIdx = Number(topicIndex);
+    const topic = syllabus.weeks[weekIdx]?.topics[topicIdx];
+
+    if (!topic || !topic.pendingApproval) {
+      return res.status(400).json({ error: "Topic is not pending approval" });
+    }
+
+    delete topic.pendingApproval;
+    topic.approvedAt = new Date().toISOString();
+    topic.approvedBy = email;
+
+    topic.subtopics.forEach((sub) => {
+      if (sub.pendingApproval) {
+        delete sub.pendingApproval;
+        sub.approvedAt = new Date().toISOString();
+        sub.approvedBy = email;
+      }
+    });
+
+    syllabus.updatedAt = new Date().toISOString();
+    await docRef.set(syllabus);
+    res.status(200).json({ message: "Topic and subtopics approved" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
