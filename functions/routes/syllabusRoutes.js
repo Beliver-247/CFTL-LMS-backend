@@ -6,7 +6,9 @@ const {
   deleteSyllabus,
   getSyllabusByCourseAndMonth,
   markSubtopicComplete,
-  approveSyllabusChanges
+  approveSyllabusChanges,
+  approveSubtopic,
+  approveTopic
 } = require("../controllers/syllabusController");
 
 const { verifyFirebaseToken } = require("../middleware/firebaseAuth");           // For admins/coordinators
@@ -28,5 +30,18 @@ router.patch(
   verifyTeacherToken,
   markSubtopicComplete
 );
+
+router.patch(
+  "/:id/weeks/:weekNumber/topics/:topicIndex/subtopics/:subIndex/approve",
+  verifyFirebaseToken,
+  approveSubtopic
+);
+
+router.patch(
+  "/:id/weeks/:weekNumber/topics/:topicIndex/approve",
+  verifyFirebaseToken,
+  approveTopic
+);
+
 
 module.exports = router;
