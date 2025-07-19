@@ -7,6 +7,7 @@ const {
   getTeacherById,
   updateTeacher,
   deleteTeacher,
+  assignCoursesToTeacher
 } = require('../controllers/teacherController');
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.get('/profile', verifyFirebaseToken, getTeacherProfile);
 router.post('/', createTeacher);
 router.get('/', getAllTeachers);
 router.get('/:id', getTeacherById);
+router.put('/:id/assign-courses', verifyFirebaseToken,assignCoursesToTeacher);
 router.put('/:id', updateTeacher);
 router.delete('/:id', deleteTeacher);
 
