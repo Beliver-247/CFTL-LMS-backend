@@ -13,23 +13,24 @@ const verifyFirebaseToken = async (req, res, next) => {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const email = decodedToken.email;
 
-    // 1. Check admins
+    // ✅ 1. Admins & Coordinators
     const adminSnap = await db.collection('admins')
       .where('email', '==', email)
       .limit(1)
       .get();
 
     if (!adminSnap.empty) {
-      const userData = adminSnap.docs[0].data();
+      const adminData = adminSnap.docs[0].data();
       req.user = {
         email,
         uid: decodedToken.uid,
-        role: userData.role || 'admin'
+        role: adminData.role || 'admin', // could be admin, coordinator
+        ...adminData,
       };
       return next();
     }
 
-    // 2. Check admin_invites
+    // ✅ 2. Invited Admins
     const inviteSnap = await db.collection('admin_invites')
       .where('email', '==', email)
       .limit(1)
@@ -39,40 +40,16 @@ const verifyFirebaseToken = async (req, res, next) => {
       req.user = {
         email,
         uid: decodedToken.uid,
-        role: 'invited-admin'
+        role: 'invited-admin',
       };
       return next();
     }
 
-// 🔧 3. Check teachers
-const teacherSnap = await db.collection('teachers')
-  .where('email', '==', email)
-  .limit(1)
-  .get();
-
-if (!teacherSnap.empty) {
-  const teacherData = teacherSnap.docs[0].data();
-  req.user = {
-    email,
-    uid: decodedToken.uid,
-    role: teacherData.role || 'teacher',
-    ...teacherData
-  };
-} else {
-  // ✅ Allow access to complete profile route for new Google sign-ins
-  req.user = {
-    email,
-    uid: decodedToken.uid,
-    role: 'incomplete-teacher',
-  };
-}
-
-return next();
-
+    // ❌ Fallback: not an admin
+    return res.status(403).send({ error: 'Unauthorized: Admin access only' });
   } catch (error) {
     return res.status(403).send({ error: 'Unauthorized' });
   }
 };
-
 
 module.exports = { verifyFirebaseToken };
