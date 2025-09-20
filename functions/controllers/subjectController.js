@@ -1,3 +1,4 @@
+// controllers/subjectController.js
 const { db } = require('../config/firebase');
 const { Timestamp } = require('firebase-admin/firestore');
 
@@ -8,7 +9,6 @@ const validStreams = ['biology', 'maths', 'tech', 'art', 'commerce'];
 // ✅ Create a new subject
 exports.createSubject = async (req, res) => {
   try {
-    // MODIFIED: Added isMandatory field
     const { subjectName, program, stream, isMandatory } = req.body;
 
     if (!subjectName || typeof subjectName !== 'string') {
@@ -25,7 +25,7 @@ exports.createSubject = async (req, res) => {
       createdAt: Timestamp.now(),
     };
 
-    const programUpper = program.toUpperCase();
+    const programUpper = subjectData.program;
 
     if (programUpper === 'AL') {
       if (!stream || typeof stream !== 'string' || !validStreams.includes(stream.toLowerCase())) {
@@ -38,7 +38,7 @@ exports.createSubject = async (req, res) => {
 
     // NEW: Handle the isMandatory flag for OL subjects
     if (programUpper === 'OL') {
-        subjectData.isMandatory = typeof isMandatory === 'boolean' ? isMandatory : false; // Default to false
+      subjectData.isMandatory = typeof isMandatory === 'boolean' ? isMandatory : false;
     }
 
     const newDoc = await subjectCollection.add(subjectData);
@@ -68,7 +68,7 @@ exports.getPublicSubjectNames = async (req, res) => {
   }
 };
 
-// ✅ Get all subjects
+// ✅ Get all subjects (filtered)
 exports.getAllSubjects = async (req, res) => {
   try {
     const { program, stream } = req.query;
@@ -112,8 +112,8 @@ exports.updateSubject = async (req, res) => {
       return res.status(400).send({ error: 'stream must be a string' });
     }
 
-        if ('isMandatory' in updateData && typeof updateData.isMandatory !== 'boolean') {
-        return res.status(400).send({ error: 'isMandatory must be a boolean' });
+    if ('isMandatory' in updateData && typeof updateData.isMandatory !== 'boolean') {
+      return res.status(400).send({ error: 'isMandatory must be a boolean' });
     }
 
     const subjectRef = subjectCollection.doc(subjectId);
@@ -168,8 +168,6 @@ exports.getSubjectById = async (req, res) => {
   }
 };
 
-
-
 // ✅ Delete a subject
 exports.deleteSubject = async (req, res) => {
   try {
@@ -184,6 +182,29 @@ exports.deleteSubject = async (req, res) => {
 
     await subjectRef.delete();
     res.status(204).send();
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+// ✅ NEW: List teachers assigned to a subject
+exports.getTeachersForSubject = async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+    const subSnap = await subjectCollection.doc(subjectId).get();
+    if (!subSnap.exists) return res.status(404).send({ error: "Subject not found" });
+
+    const teacherIds = Array.isArray(subSnap.data().teacherIds) ? subSnap.data().teacherIds : [];
+    if (!teacherIds.length) return res.status(200).send([]);
+
+    const reads = await Promise.all(
+      teacherIds.map((tid) => db.collection('teachers').doc(tid).get())
+    );
+    const teachers = reads
+      .filter((t) => t.exists)
+      .map((t) => ({ id: t.id, ...t.data() }));
+
+    res.status(200).send(teachers);
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
