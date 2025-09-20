@@ -6,12 +6,15 @@ const {
   getSubjectById,
   updateSubject,
   deleteSubject,
+  getPublicSubjectNames
 } = require('../controllers/subjectController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
 const { authorizeRole } = require('../middleware/authorizeRole');
 
 const router = express.Router();
+
+router.get('/public', getPublicSubjectNames);
 
 // Only admins can create, update, delete subjects
 router.post('/', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), createSubject);

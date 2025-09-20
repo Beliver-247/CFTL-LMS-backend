@@ -25,7 +25,7 @@ router.get('/', verifyFirebaseToken, authorizeRole(['coordinator','admin']), get
 router.put('/:id/approve', verifyFirebaseToken, authorizeRole(['coordinator','admin']), approveRequest);
 router.put('/:id/reject', verifyFirebaseToken, authorizeRole(['coordinator','admin']), rejectRequest);
 router.get('/parent', authenticate, getRequestsForParent);
-router.get('/coordinator', verifyFirebaseToken, authorizeRole(['coordinator']), getRequestsForCoordinator);
+router.get('/coordinator', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), getRequestsForCoordinator);
 
 
 module.exports = router;

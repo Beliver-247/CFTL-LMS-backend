@@ -1,3 +1,4 @@
+// enrollmentController.js
 const { db } = require("../config/firebase");
 const { Timestamp } = require("firebase-admin/firestore");
 
@@ -9,19 +10,25 @@ const paymentCollection = db.collection("payments");
 // ✅ Enroll a student to a course
 exports.enrollStudent = async (req, res) => {
   try {
-    const { studentId, courseId } = req.body;
+    const { studentId, courseId, stream, subjects } = req.body; // MODIFIED: Now accepts stream & subjects
     const enrolledBy = req.user.email;
+
+    if (!studentId || !courseId || !Array.isArray(subjects)) {
+      return res
+        .status(400)
+        .send({ error: "studentId, courseId, and a subjects array are required." });
+    }
 
     const [studentDoc, courseDoc] = await Promise.all([
       studentCollection.doc(studentId).get(),
       courseCollection.doc(courseId).get(),
     ]);
 
-    if (!studentDoc.exists)
-      return res.status(404).send({ error: "Student not found" });
-    if (!courseDoc.exists)
-      return res.status(404).send({ error: "Course not found" });
+    if (!studentDoc.exists) return res.status(404).send({ error: "Student not found" });
+    if (!courseDoc.exists) return res.status(404).send({ error: "Course not found" });
 
+    
+    // Check existing enrollments
     const existingEnrollments = await enrollmentCollection
       .where("studentId", "==", studentId)
       .get();
@@ -29,25 +36,48 @@ exports.enrollStudent = async (req, res) => {
     const hasActive = existingEnrollments.docs.some(
       (doc) => doc.data().status === "active"
     );
-
     if (hasActive) {
-      return res.status(400).send({
-        error: "Student already has an active enrollment",
-      });
+      return res.status(400).send({ error: "Student already has an active enrollment" });
     }
 
     const hasInactiveInSameCourse = existingEnrollments.docs.some(
       (doc) =>
         doc.data().status === "inactive" && doc.data().courseId === courseId
     );
-
     if (hasInactiveInSameCourse) {
-      return res.status(400).send({
-        error: "Student already has an inactive enrollment in this course",
-      });
+      return res
+        .status(400)
+        .send({ error: "Student already has an inactive enrollment in this course" });
     }
 
     const course = courseDoc.data();
+    let finalSubjectIds = [];
+
+    // ✅ NEW: Program-specific validation logic
+    if (course.program === "AL") {
+      if (!stream) return res.status(400).send({ error: "A stream is required for AL courses." });
+      if (!course.streams[stream]) return res.status(400).send({ error: "Invalid stream for this course." });
+      if (subjects.length !== 3)
+        return res.status(400).send({ error: "You must choose exactly 3 subjects for an AL stream." });
+
+      const streamSubjects = course.streams[stream];
+      const isValid = subjects.every((s) => streamSubjects.includes(s));
+      if (!isValid)
+        return res.status(400).send({ error: "One or more chosen subjects are not valid for the selected stream." });
+
+      finalSubjectIds = [...course.commonSubjects, ...subjects];
+    } else if (course.program === "OL") {
+      if (subjects.length > 4)
+        return res.status(400).send({ error: "You can choose a maximum of 4 optional subjects for OL." });
+
+      const isValid = subjects.every((s) => course.optionalSubjects.includes(s));
+      if (!isValid)
+        return res.status(400).send({ error: "One or more chosen subjects are not in the optional list for this course." });
+
+      finalSubjectIds = [...course.mandatorySubjects, ...subjects];
+    }
+
+    // Fee breakdown
     const durationMonths = course.duration === "1 Year" ? 12 : 6;
     const monthlyFee = Math.floor(course.totalFee / durationMonths);
 
@@ -59,10 +89,13 @@ exports.enrollStudent = async (req, res) => {
       status: "active",
       totalFee: course.totalFee,
       monthlyFee,
+      stream: course.program === "AL" ? stream : null, // store stream for AL
+      subjects: finalSubjectIds, // store final subject list
     };
 
     const enrollmentRef = await enrollmentCollection.add(newEnrollment);
 
+    // ✅ Generate monthly payment schedule
     const startDate = new Date();
     const payments = [];
 
@@ -101,6 +134,53 @@ exports.enrollStudent = async (req, res) => {
   }
 };
 
+// ✅ Get pending registrations for the coordinator's courses
+exports.getPendingRegistrationsForCoordinator = async (req, res) => {
+  try {
+    const coordinatorEmail = req.user.email.toLowerCase();
+
+    // 1) Which courses does this coordinator own?
+    const coursesSnap = await courseCollection
+      .where('coordinatorEmail', '==', coordinatorEmail)
+      .get();
+
+    const courses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const courseIds = courses.map(c => c.id);
+    if (courseIds.length === 0) return res.status(200).send([]);
+
+    // 2) Build a set of students who already have an ACTIVE enrollment (any course)
+    const activeSnap = await enrollmentCollection.where('status', '==', 'active').get();
+    const activeStudentIds = new Set(activeSnap.docs.map(d => d.data().studentId));
+
+    // 3) Students who selected one of the coordinator's courses in their preferences
+    // Firestore 'in' supports up to 10 values — chunk if needed.
+    const chunks = [];
+    for (let i = 0; i < courseIds.length; i += 10) chunks.push(courseIds.slice(i, i + 10));
+
+    const studentSnaps = await Promise.all(
+      chunks.map(ids =>
+        studentCollection.where('enrollmentPreferences.courseId', 'in', ids).get()
+      )
+    );
+
+    // 4) Return only those without an active enrollment; include their preferred course
+    const results = [];
+    for (const snap of studentSnaps) {
+      for (const doc of snap.docs) {
+        const student = { id: doc.id, ...doc.data() };
+        if (activeStudentIds.has(student.id)) continue; // not pending if already active anywhere
+        const preferredCourseId = student.enrollmentPreferences?.courseId || null;
+        const course = courses.find(c => c.id === preferredCourseId) || null;
+        results.push({ student, course }); // keep same shape as admin `/all` for easy reuse
+      }
+    }
+
+    res.status(200).send(results);
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
 
 // ✅ Get students enrolled in a specific course
 exports.getEnrollmentsByCourse = async (req, res) => {
@@ -114,9 +194,7 @@ exports.getEnrollmentsByCourse = async (req, res) => {
     const enrollments = [];
     for (const doc of enrollmentSnap.docs) {
       const enrollment = doc.data();
-      const studentDoc = await studentCollection
-        .doc(enrollment.studentId)
-        .get();
+      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
 
       if (studentDoc.exists) {
         enrollments.push({
@@ -133,6 +211,7 @@ exports.getEnrollmentsByCourse = async (req, res) => {
   }
 };
 
+// ✅ Get enrollments for coordinator's courses
 exports.getEnrollmentsForCoordinator = async (req, res) => {
   try {
     const coordinatorEmail = req.user.email;
@@ -142,20 +221,16 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
       .get();
 
     const courseIds = coursesSnap.docs.map((doc) => doc.id);
-
-    if (courseIds.length === 0) return res.status(200).send([]); // No assigned courses
+    if (courseIds.length === 0) return res.status(200).send([]);
 
     const enrollmentSnap = await enrollmentCollection
       .where("courseId", "in", courseIds)
       .get();
 
     const enrollments = [];
-
     for (const doc of enrollmentSnap.docs) {
       const enrollment = doc.data();
-      const studentDoc = await studentCollection
-        .doc(enrollment.studentId)
-        .get();
+      const studentDoc = await studentCollection.doc(enrollment.studentId).get();
 
       if (studentDoc.exists) {
         enrollments.push({
@@ -175,37 +250,33 @@ exports.getEnrollmentsForCoordinator = async (req, res) => {
   }
 };
 
-
+// ✅ Get all students with their (optional) enrollment
 exports.getAllStudentsWithOptionalEnrollment = async (req, res) => {
   try {
-    const [studentsSnap, enrollmentsSnap] = await Promise.all([
+    const [studentsSnap, enrollmentsSnap, courseDocs] = await Promise.all([
       studentCollection.get(),
-      enrollmentCollection.get()
+      enrollmentCollection.get(),
+      courseCollection.get(),
     ]);
 
     const coursesMap = {};
-    const courseDocs = await courseCollection.get();
-    courseDocs.forEach(doc => {
+    courseDocs.forEach((doc) => {
       coursesMap[doc.id] = { id: doc.id, ...doc.data() };
     });
 
     const enrollmentsMap = {};
-    enrollmentsSnap.docs.forEach(doc => {
+    enrollmentsSnap.docs.forEach((doc) => {
       const data = doc.data();
       enrollmentsMap[data.studentId] = data.courseId;
     });
 
     const results = [];
-
     for (const studentDoc of studentsSnap.docs) {
       const student = { id: studentDoc.id, ...studentDoc.data() };
       const courseId = enrollmentsMap[student.id];
       const course = courseId ? coursesMap[courseId] : null;
 
-      results.push({
-        student,
-        course,
-      });
+      results.push({ student, course });
     }
 
     res.status(200).send(results);
@@ -214,6 +285,7 @@ exports.getAllStudentsWithOptionalEnrollment = async (req, res) => {
   }
 };
 
+// ✅ Update enrollment status
 exports.updateEnrollmentStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -236,12 +308,13 @@ exports.updateEnrollmentStatus = async (req, res) => {
         .where("status", "==", "active")
         .get();
 
-      const isActiveElsewhere = activeEnrollmentsSnap.docs.some(doc => doc.id !== id);
-
+      const isActiveElsewhere = activeEnrollmentsSnap.docs.some(
+        (doc) => doc.id !== id
+      );
       if (isActiveElsewhere) {
-        return res.status(400).send({
-          error: "Student is already active in another course"
-        });
+        return res
+          .status(400)
+          .send({ error: "Student is already active in another course" });
       }
     }
 
@@ -251,10 +324,6 @@ exports.updateEnrollmentStatus = async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 };
-
-
-
-
 
 // ✅ Unenroll (delete) a student from a course
 exports.deleteEnrollment = async (req, res) => {

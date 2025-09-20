@@ -5,7 +5,8 @@ const {
   deleteEnrollment,
   getEnrollmentsForCoordinator,
   getAllStudentsWithOptionalEnrollment,
-  updateEnrollmentStatus
+  updateEnrollmentStatus,
+  getPendingRegistrationsForCoordinator
 } = require('../controllers/enrollmentController');
 
 const { verifyFirebaseToken } = require('../middleware/firebaseAuth');
@@ -22,11 +23,18 @@ router.get(
   authorizeRole(["admin"]),
   getAllStudentsWithOptionalEnrollment
 );
-router.patch('/:id/status', verifyFirebaseToken, authorizeRole(['coordinator']), updateEnrollmentStatus);
+
+router.get(
+  '/coordinator/pending',
+  verifyFirebaseToken,
+  authorizeRole(['admin', 'coordinator']),
+  getPendingRegistrationsForCoordinator
+);
+router.patch('/:id/status', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), updateEnrollmentStatus);
 router.get(
   '/coordinator',
   verifyFirebaseToken,
-  authorizeRole(['coordinator']),
+  authorizeRole(['admin', 'coordinator']),
   getEnrollmentsForCoordinator
 );
 
