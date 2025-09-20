@@ -10,6 +10,6 @@ const router = express.Router();
 router.post('/signed-url', authenticate, getSignedUrl);
 
 // 🔐 Secure view URL generation for coordinators
-router.post('/view-url', verifyFirebaseToken, authorizeRole(['coordinator']), getViewUrl);
+router.post('/view-url', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), getViewUrl);
 
 module.exports = router;

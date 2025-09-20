@@ -8,7 +8,8 @@ const validStreams = ['biology', 'maths', 'tech', 'art', 'commerce'];
 // ✅ Create a new subject
 exports.createSubject = async (req, res) => {
   try {
-    const { subjectName, program, stream } = req.body;
+    // MODIFIED: Added isMandatory field
+    const { subjectName, program, stream, isMandatory } = req.body;
 
     if (!subjectName || typeof subjectName !== 'string') {
       return res.status(400).send({ error: 'subjectName is required and must be a string' });
@@ -24,7 +25,9 @@ exports.createSubject = async (req, res) => {
       createdAt: Timestamp.now(),
     };
 
-    if (program.toUpperCase() === 'AL') {
+    const programUpper = program.toUpperCase();
+
+    if (programUpper === 'AL') {
       if (!stream || typeof stream !== 'string' || !validStreams.includes(stream.toLowerCase())) {
         return res.status(400).send({ error: 'stream is required for AL program and must be valid' });
       }
@@ -33,8 +36,33 @@ exports.createSubject = async (req, res) => {
       return res.status(400).send({ error: 'OL program should not have a stream' });
     }
 
+    // NEW: Handle the isMandatory flag for OL subjects
+    if (programUpper === 'OL') {
+        subjectData.isMandatory = typeof isMandatory === 'boolean' ? isMandatory : false; // Default to false
+    }
+
     const newDoc = await subjectCollection.add(subjectData);
     res.status(201).send({ id: newDoc.id });
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+};
+
+// ✅ Public: list minimal subject info (safe to expose)
+exports.getPublicSubjectNames = async (req, res) => {
+  try {
+    const snapshot = await subjectCollection.get();
+    const subjects = snapshot.docs.map((doc) => {
+      const s = doc.data();
+      return {
+        id: doc.id,
+        subjectName: s.subjectName,
+        program: s.program,               // "OL" or "AL"
+        stream: s.stream || null,         // only for AL
+        isMandatory: !!s.isMandatory,     // useful for OL UIs
+      };
+    });
+    res.status(200).send(subjects);
   } catch (err) {
     res.status(500).send({ error: err.message });
   }
@@ -82,6 +110,10 @@ exports.updateSubject = async (req, res) => {
 
     if ('stream' in updateData && typeof updateData.stream !== 'string') {
       return res.status(400).send({ error: 'stream must be a string' });
+    }
+
+        if ('isMandatory' in updateData && typeof updateData.isMandatory !== 'boolean') {
+        return res.status(400).send({ error: 'isMandatory must be a boolean' });
     }
 
     const subjectRef = subjectCollection.doc(subjectId);

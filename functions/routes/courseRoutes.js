@@ -1,9 +1,8 @@
+// courseRoutes.js
 const express = require('express');
 const {
   createCourse,
   getAllCourses,
-  enrollStudent,
-  getStudentsForCoordinator,
   updateCourse,
   deleteCourse,
   getCoursesForCoordinator
@@ -14,14 +13,19 @@ const { authorizeRole } = require('../middleware/authorizeRole');
 
 const router = express.Router();
 
-// Admin or coordinator can access these
+// ✅ Admin can create courses
 router.post('/', verifyFirebaseToken, authorizeRole(['admin']), createCourse);
-router.get('/', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), getAllCourses);
-router.put('/:courseId', verifyFirebaseToken, authorizeRole(['admin']), updateCourse);
-router.post('/enroll', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), enrollStudent);
-router.get('/coordinator/students', verifyFirebaseToken, authorizeRole(['coordinator']), getStudentsForCoordinator);
-router.get('/coordinator/courses', verifyFirebaseToken, authorizeRole(['coordinator']), getCoursesForCoordinator);
-router.delete('/:courseId', verifyFirebaseToken, authorizeRole(['admin']), deleteCourse);
 
+// ✅ Admin & coordinators can view courses
+router.get('/', getAllCourses);
+
+// ✅ Admin can update a course
+router.put('/:courseId', verifyFirebaseToken, authorizeRole(['admin']), updateCourse);
+
+// ✅ Admin & coordinators can get courses for a coordinator
+router.get('/coordinator/courses', verifyFirebaseToken, authorizeRole(['admin', 'coordinator']), getCoursesForCoordinator);
+
+// ✅ Admin can delete a course
+router.delete('/:courseId', verifyFirebaseToken, authorizeRole(['admin']), deleteCourse);
 
 module.exports = router;
