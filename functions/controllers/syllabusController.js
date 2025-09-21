@@ -1,274 +1,331 @@
+// controllers/syllabusController.js
+// Subject-based syllabus controller (no courseId anywhere)
+
 const { db } = require("../config/firebase");
 
-// Helper to validate nested syllabus structure (optional)
+/** =========================
+ *  Validation
+ *  ========================= */
 const validateSyllabusStructure = (syllabus) => {
-  if (!syllabus.courseId || !syllabus.month || !Array.isArray(syllabus.weeks)) return false;
-  for (const week of syllabus.weeks) {
-    if (
-      typeof week.weekNumber !== "number" ||
-      !Array.isArray(week.topics)
-    ) return false;
+  if (!syllabus || typeof syllabus !== "object") {
+    return { valid: false, message: "Invalid payload" };
+  }
+  const { subjectId, month, weeks } = syllabus;
 
-    for (const topic of week.topics) {
-      if (
-        typeof topic.title !== "string" ||
-        typeof topic.status !== "string" ||
-        !Array.isArray(topic.subtopics)
-      ) return false;
+  if (!subjectId || typeof subjectId !== "string") {
+    return { valid: false, message: "Missing or invalid subjectId" };
+  }
+  if (!month || typeof month !== "string") {
+    // e.g., "2025-09" — use whatever format you prefer, just be consistent
+    return { valid: false, message: "Missing or invalid month" };
+  }
+  if (!Array.isArray(weeks)) {
+    return { valid: false, message: "weeks must be an array" };
+  }
 
-      for (const sub of topic.subtopics) {
-        if (
-          typeof sub.title !== "string" ||
-          typeof sub.status !== "string"
-        ) return false;
+  for (const w of weeks) {
+    if (typeof w.weekNumber !== "number") {
+      return { valid: false, message: "week.weekNumber must be a number" };
+    }
+    if (!Array.isArray(w.topics)) {
+      return { valid: false, message: "week.topics must be an array" };
+    }
+    for (const t of w.topics) {
+      if (typeof t.title !== "string") {
+        return { valid: false, message: "topic.title must be a string" };
+      }
+      if (typeof t.status !== "string") {
+        return { valid: false, message: "topic.status must be a string" };
+      }
+      if (!Array.isArray(t.subtopics)) {
+        return { valid: false, message: "topic.subtopics must be an array" };
+      }
+      for (const s of t.subtopics) {
+        if (typeof s.title !== "string") {
+          return { valid: false, message: "subtopic.title must be a string" };
+        }
+        if (typeof s.status !== "string") {
+          return { valid: false, message: "subtopic.status must be a string" };
+        }
       }
     }
   }
-  return true;
+  return { valid: true };
 };
 
+/** Optional existence check for the subject */
+const assertSubjectExists = async (subjectId) => {
+  const ref = db.collection("subjects").doc(subjectId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    const err = new Error("Subject not found");
+    err.status = 400;
+    throw err;
+  }
+};
+
+/** Build deterministic syllabus doc id */
+const syllabusDocId = (subjectId, month) => `${subjectId}_${month}`;
+
+/** =========================
+ *  Create / Upsert
+ *  ========================= */
 exports.createSyllabus = async (req, res) => {
   try {
-    const data = req.body;
-    if (!validateSyllabusStructure(data)) {
-      return res.status(400).json({ error: "Invalid syllabus structure" });
-    }
+    const payload = req.body;
+    const { valid, message } = validateSyllabusStructure(payload);
+    if (!valid) return res.status(400).json({ error: message });
 
-    const docRef = await db.collection("syllabus").add({
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      coordinatorApprovedChanges: false,
-    });
+    const { subjectId, month } = payload;
 
-    res.status(201).json({ id: docRef.id });
+    // Optional but safer
+    await assertSubjectExists(subjectId);
+
+    const id = syllabusDocId(subjectId, month);
+    const ref = db.collection("syllabus").doc(id);
+
+    const now = new Date().toISOString();
+    const createdBy = req.user?.email || "system";
+
+    await ref.set(
+      {
+        ...payload,
+        createdBy,
+        updatedAt: now,
+      },
+      { merge: true } // upsert
+    );
+
+    return res.status(201).json({ id, message: "Syllabus saved." });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(err.status || 500).json({ error: err.message });
   }
 };
 
+/** =========================
+ *  Get by Subject + Month
+ *  ========================= */
+exports.getSyllabusBySubjectAndMonth = async (req, res) => {
+  try {
+    const { subjectId, month } = req.params;
+
+    if (!subjectId || !month) {
+      return res.status(400).json({ error: "subjectId and month are required" });
+    }
+
+    const id = syllabusDocId(subjectId, month);
+    const doc = await db.collection("syllabus").doc(id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: "No syllabus found" });
+    }
+    return res.json({ id: doc.id, ...doc.data() });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/** =========================
+ *  List all (admin-only)
+ *  ========================= */
 exports.getAllSyllabus = async (req, res) => {
   try {
-    const snapshot = await db.collection("syllabus").get();
-    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.status(200).json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// NEW: Fetch syllabus by courseId and month
-exports.getSyllabusByCourseAndMonth = async (req, res) => {
-  const { courseId, month } = req.params;
-
-  try {
-    const snapshot = await db.collection("syllabus")
-      .where("courseId", "==", courseId)
-      .where("month", "==", month)
-      .get();
-
-    if (snapshot.empty) {
-      return res.status(404).json({ message: "No syllabus found" });
+    // Optionally require coordinator/admin
+    const role = req.user?.role;
+    if (role !== "coordinator" && role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
-    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.status(200).json(data[0]); // Assuming one per course+month
+    const snap = await db.collection("syllabus").get();
+    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return res.json(items);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
+/** =========================
+ *  Update by document id
+ *  ========================= */
 exports.updateSyllabus = async (req, res) => {
   try {
-    await db.collection("syllabus").doc(req.params.id).update({
-      ...req.body,
-      updatedAt: new Date().toISOString(),
-    });
-    res.status(200).json({ message: "Updated" });
+    const { id } = req.params;
+    const patch = { ...(req.body || {}) };
+
+    // ✅ Ignore identity fields instead of throwing
+    delete patch.subjectId;
+    delete patch.month;
+
+    const ref = db.collection("syllabus").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: "Not found" });
+
+    await ref.set({ ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+    return res.json({ message: "Syllabus updated" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
+
+/** =========================
+ *  Delete by document id
+ *  ========================= */
 exports.deleteSyllabus = async (req, res) => {
   try {
-    await db.collection("syllabus").doc(req.params.id).delete();
-    res.status(200).json({ message: "Deleted" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+    const { id } = req.params;
 
-exports.markSubtopicComplete = async (req, res) => {
-  const { id, weekNumber, topicIndex, subIndex } = req.params;
-  const { uid, email, role } = req.user;
-  console.log("Subtopic update by user:", req.user);
-
-  if (role !== "teacher") {
-    return res.status(403).json({ error: "Only teachers can perform this action" });
-  }
-
-  try {
-    const docRef = db.collection("syllabus").doc(id);
-    const doc = await docRef.get();
-
-    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found" });
-
-    const syllabus = doc.data();
-    const weekIdx = Number(weekNumber) - 1;
-    const topicIdx = Number(topicIndex);
-    const subIdx = Number(subIndex);
-
-    const subtopic = syllabus.weeks[weekIdx]?.topics[topicIdx]?.subtopics[subIdx];
-    if (!subtopic) return res.status(404).json({ error: "Subtopic not found" });
-
-    // Mark subtopic as complete
-    subtopic.status = "complete";
-    subtopic.markedBy = email;
-    subtopic.markedAt = new Date().toISOString();
-    subtopic.pendingApproval = true;
-
-    // Check if all subtopics are completed
-    const topic = syllabus.weeks[weekIdx].topics[topicIdx];
-    const allSubtopicsDone = topic.subtopics.every(st => st.status === "complete");
-    if (allSubtopicsDone) {
-      topic.status = "complete";
-      topic.pendingApproval = true;
+    const role = req.user?.role;
+    if (role !== "coordinator" && role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
-    syllabus.updatedAt = new Date().toISOString();
-
-    await docRef.set(syllabus);
-    res.status(200).json({ message: "Subtopic marked complete. Pending coordinator approval." });
-
+    await db.collection("syllabus").doc(id).delete();
+    return res.json({ message: "Deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
-exports.approveSyllabusChanges = async (req, res) => {
-  const { id } = req.params;
-  const { email, role } = req.user;
-
-  if (role !== "coordinator") {
-    return res.status(403).json({ error: "Only coordinators can approve changes" });
-  }
-
+/** =========================
+ *  Mark a subtopic complete (teacher/coordinator)
+ *  ========================= */
+exports.markSubtopicComplete = async (req, res) => {
   try {
-    const docRef = db.collection("syllabus").doc(id);
-    const doc = await docRef.get();
+    const { id, weekNumber, topicIndex, subIndex } = req.params;
 
-    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found" });
+    const role = req.user?.role;
+    if (!["teacher", "coordinator", "admin"].includes(role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const ref = db.collection("syllabus").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: "Not found" });
 
     const syllabus = doc.data();
 
-    // Clear pendingApproval flags
-    syllabus.weeks.forEach(week => {
-      week.topics.forEach(topic => {
-        if (topic.pendingApproval) {
-          delete topic.pendingApproval;
-          topic.approvedBy = email;
-          topic.approvedAt = new Date().toISOString();
-        }
+    const week = syllabus.weeks.find((w) => w.weekNumber === Number(weekNumber));
+    if (!week) return res.status(400).json({ error: "Invalid weekNumber" });
 
-        topic.subtopics.forEach(sub => {
-          if (sub.pendingApproval) {
-            delete sub.pendingApproval;
-            sub.approvedBy = email;
-            sub.approvedAt = new Date().toISOString();
-          }
-        });
-      });
-    });
+    const topic = week.topics?.[Number(topicIndex)];
+    if (!topic) return res.status(400).json({ error: "Invalid topicIndex" });
 
-    syllabus.coordinatorApprovedChanges = true;
-    syllabus.updatedAt = new Date().toISOString();
+    const sub = topic.subtopics?.[Number(subIndex)];
+    if (!sub) return res.status(400).json({ error: "Invalid subIndex" });
 
-    await docRef.set(syllabus);
-    res.status(200).json({ message: "All pending changes approved" });
+    sub.completed = true;
+    sub.status = "completed";
+    sub.completedAt = new Date().toISOString();
+    sub.completedBy = req.user?.email || "unknown";
 
+    await ref.set({ ...syllabus, updatedAt: new Date().toISOString() });
+    return res.json({ message: "Subtopic marked complete" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/** =========================
+ *  Approvals (coordinator-only)
+ *  ========================= */
+exports.approveSyllabusChanges = async (req, res) => {
+  try {
+    if (req.user?.role !== "coordinator" && req.user?.role !== "admin") {
+      return res.status(403).json({ error: "Only coordinators/admins can approve" });
+    }
+
+    const { id } = req.params;
+    const ref = db.collection("syllabus").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: "Not found" });
+
+    const syllabus = doc.data();
+    syllabus.approved = true;
+    syllabus.approvedAt = new Date().toISOString();
+    syllabus.approvedBy = req.user.email;
+
+    await ref.set(syllabus);
+    return res.json({ message: "Syllabus approved" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
 exports.approveSubtopic = async (req, res) => {
-  const { id, weekNumber, topicIndex, subIndex } = req.params;
-  const { role, email } = req.user;
-
-  if (role !== "coordinator") {
-    return res.status(403).json({ error: "Only coordinators can approve changes" });
-  }
-
   try {
-    const docRef = db.collection("syllabus").doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found" });
-
-    const syllabus = doc.data();
-    const weekIdx = Number(weekNumber) - 1;
-    const topicIdx = Number(topicIndex);
-    const subIdx = Number(subIndex);
-
-    const subtopic = syllabus.weeks[weekIdx]?.topics[topicIdx]?.subtopics[subIdx];
-    if (!subtopic || !subtopic.pendingApproval) {
-      return res.status(400).json({ error: "Subtopic is not pending approval" });
+    if (req.user?.role !== "coordinator" && req.user?.role !== "admin") {
+      return res.status(403).json({ error: "Only coordinators/admins can approve" });
     }
 
-    delete subtopic.pendingApproval;
-    subtopic.approvedAt = new Date().toISOString();
-    subtopic.approvedBy = email;
+    const { id, weekNumber, topicIndex, subIndex } = req.params;
+    const ref = db.collection("syllabus").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: "Not found" });
+
+    const syllabus = doc.data();
+    const week = syllabus.weeks.find((w) => w.weekNumber === Number(weekNumber));
+    if (!week) return res.status(400).json({ error: "Invalid weekNumber" });
+
+    const topic = week.topics?.[Number(topicIndex)];
+    if (!topic) return res.status(400).json({ error: "Invalid topicIndex" });
+
+    const sub = topic.subtopics?.[Number(subIndex)];
+    if (!sub) return res.status(400).json({ error: "Invalid subIndex" });
+
+    sub.approved = true;
+    sub.approvedAt = new Date().toISOString();
+    sub.approvedBy = req.user.email;
 
     syllabus.updatedAt = new Date().toISOString();
-    await docRef.set(syllabus);
-    res.status(200).json({ message: "Subtopic approved" });
-
+    await ref.set(syllabus);
+    return res.json({ message: "Subtopic approved" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
 exports.approveTopic = async (req, res) => {
-  const { id, weekNumber, topicIndex } = req.params;
-  const { role, email } = req.user;
-
-  if (role !== "coordinator") {
-    return res.status(403).json({ error: "Only coordinators can approve changes" });
-  }
-
   try {
-    const docRef = db.collection("syllabus").doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found" });
-
-    const syllabus = doc.data();
-    const weekIdx = Number(weekNumber) - 1;
-    const topicIdx = Number(topicIndex);
-    const topic = syllabus.weeks[weekIdx]?.topics[topicIdx];
-
-    if (!topic || !topic.pendingApproval) {
-      return res.status(400).json({ error: "Topic is not pending approval" });
+    if (req.user?.role !== "coordinator" && req.user?.role !== "admin") {
+      return res.status(403).json({ error: "Only coordinators/admins can approve" });
     }
 
-    delete topic.pendingApproval;
-    topic.approvedAt = new Date().toISOString();
-    topic.approvedBy = email;
+    const { id, weekNumber, topicIndex } = req.params;
+    const ref = db.collection("syllabus").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: "Not found" });
 
-    topic.subtopics.forEach((sub) => {
-      if (sub.pendingApproval) {
-        delete sub.pendingApproval;
-        sub.approvedAt = new Date().toISOString();
-        sub.approvedBy = email;
-      }
+    const syllabus = doc.data();
+    const week = syllabus.weeks.find((w) => w.weekNumber === Number(weekNumber));
+    if (!week) return res.status(400).json({ error: "Invalid weekNumber" });
+
+    const topic = week.topics?.[Number(topicIndex)];
+    if (!topic) return res.status(400).json({ error: "Invalid topicIndex" });
+
+    topic.approved = true;
+    topic.approvedAt = new Date().toISOString();
+    topic.approvedBy = req.user.email;
+
+    // Also approve all subtopics under the topic
+    (topic.subtopics || []).forEach((s) => {
+      s.approved = true;
+      s.approvedAt = new Date().toISOString();
+      s.approvedBy = req.user.email;
     });
 
     syllabus.updatedAt = new Date().toISOString();
-    await docRef.set(syllabus);
-    res.status(200).json({ message: "Topic and subtopics approved" });
-
+    await ref.set(syllabus);
+    return res.json({ message: "Topic and subtopics approved" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 };
-
-
