@@ -4,3 +4,4 @@ node_modules/
 firebase-debug.log
 firebase-service-account.json
 keys/
+.DS_Store
